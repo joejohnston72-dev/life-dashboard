@@ -1,4 +1,8 @@
+import { supabase } from '../shared/supabase.js';
 import db from '../shared/db.js';
+
+const { data: { session } } = await supabase.auth.getSession();
+if (!session) { window.location.href = '../'; throw new Error('unauthenticated'); }
 
 const CATEGORIES = {
   income:  ['Salary', 'Freelance', 'Investment', 'Gift', 'Other'],

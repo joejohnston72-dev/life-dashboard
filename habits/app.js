@@ -1,4 +1,8 @@
+import { supabase } from '../shared/supabase.js';
 import db from '../shared/db.js';
+
+const { data: { session } } = await supabase.auth.getSession();
+if (!session) { window.location.href = '../'; throw new Error('unauthenticated'); }
 
 const COLORS = ['#e94560','#4fc3f7','#81c784','#ce93d8','#fbbf24','#f97316','#34d399','#60a5fa'];
 const today  = new Date().toISOString().slice(0, 10);

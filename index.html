@@ -11,10 +11,112 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Dashboard">
   <link rel="apple-touch-icon" href="icon.png">
+  <style>
+    .auth-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: var(--gap);
+    }
+    .auth-overlay.visible { display: flex; }
+
+    .auth-card {
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .auth-icon { font-size: 3rem; margin-bottom: 16px; }
+    .auth-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; }
+    .auth-sub { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 32px; line-height: 1.5; }
+
+    .auth-input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 14px 16px;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .auth-input:focus { border-color: var(--accent); }
+
+    .auth-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .auth-btn:disabled { opacity: 0.6; }
+
+    .auth-sent {
+      display: none;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-top: 8px;
+    }
+    .auth-sent span { font-size: 2rem; display: block; margin-bottom: 12px; }
+
+    .header__actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .user-email {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .signout-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-  <header class="header">
+  <!-- Auth overlay -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-icon">📊</div>
+      <h2 class="auth-title">Life Dashboard</h2>
+      <p class="auth-sub">Sign in with your email to keep your data synced across all your devices.</p>
+      <div id="authForm">
+        <input class="auth-input" id="authEmail" type="email" placeholder="your@email.com" autocomplete="email">
+        <button class="auth-btn" id="authBtn">Send magic link</button>
+      </div>
+      <div class="auth-sent" id="authSent">
+        <span>✉️</span>
+        Check your email for the sign-in link.<br>You can close this tab.
+      </div>
+    </div>
+  </div>
+
+  <header class="header" style="display:flex;align-items:center;justify-content:space-between;">
     <h1 class="header__title">Dashboard</h1>
+    <div class="header__actions">
+      <span class="user-email" id="userEmail"></span>
+      <button class="signout-btn" id="signoutBtn" style="display:none">Sign out</button>
+    </div>
   </header>
 
   <main class="grid">
@@ -40,6 +142,62 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js');
     }
+  </script>
+
+  <script type="module">
+    import { supabase } from './shared/supabase.js';
+
+    const overlay   = document.getElementById('authOverlay');
+    const authForm  = document.getElementById('authForm');
+    const authSent  = document.getElementById('authSent');
+    const authEmail = document.getElementById('authEmail');
+    const authBtn   = document.getElementById('authBtn');
+    const signoutBtn = document.getElementById('signoutBtn');
+    const userEmailEl = document.getElementById('userEmail');
+
+    function showDashboard(user) {
+      overlay.classList.remove('visible');
+      signoutBtn.style.display = '';
+      userEmailEl.textContent = user.email ?? '';
+    }
+
+    function showLogin() {
+      overlay.classList.add('visible');
+      signoutBtn.style.display = 'none';
+      userEmailEl.textContent = '';
+    }
+
+    // Handle auth state changes (including magic link callback)
+    supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) showDashboard(session.user);
+      else showLogin();
+    });
+
+    // Initial check
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) showDashboard(session.user);
+    else showLogin();
+
+    authBtn.onclick = async () => {
+      const email = authEmail.value.trim();
+      if (!email) { authEmail.focus(); return; }
+      authBtn.disabled = true;
+      authBtn.textContent = 'Sending…';
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: 'https://joejohnston72-dev.github.io/life-dashboard/' },
+      });
+      if (error) {
+        authBtn.disabled = false;
+        authBtn.textContent = 'Send magic link';
+        alert(error.message);
+      } else {
+        authForm.style.display = 'none';
+        authSent.style.display = 'block';
+      }
+    };
+
+    signoutBtn.onclick = () => supabase.auth.signOut();
   </script>
 </body>
 </html>

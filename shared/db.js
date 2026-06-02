@@ -1,33 +1,27 @@
 /**
- * Shared storage layer — all modules use this, never localStorage directly.
- * Backed by IndexedDB. Swap the internals for Supabase in v2 without touching callers.
- *
- * Usage:
- *   import db from '../shared/db.js';
- *   await db.set('calories', 'log-2026-06-02', { ... });
- *   const entry = await db.get('calories', 'log-2026-06-02');
- *   const all   = await db.getAll('calories');
- *   await db.delete('calories', 'log-2026-06-02');
- *   await db.clear('calories');
+ * Shared storage layer — IndexedDB as the local-first store, Supabase for
+ * cross-device sync. All reads come from IndexedDB (fast, works offline).
+ * Writes go to IndexedDB immediately then fire-and-forget to Supabase.
+ * On module load (when authenticated) a full pull from Supabase merges any
+ * changes made on other devices into the local store.
  */
+
+import { supabase } from './supabase.js';
 
 const DB_NAME    = 'life-dashboard';
 const DB_VERSION = 1;
 const STORES     = ['calories', 'workout', 'finance', 'habits'];
 
+// ── IndexedDB ─────────────────────────────────────────────────────────────────
 function open() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-
     req.onupgradeneeded = e => {
       const db = e.target.result;
       for (const name of STORES) {
-        if (!db.objectStoreNames.contains(name)) {
-          db.createObjectStore(name);
-        }
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
       }
     };
-
     req.onsuccess = e => resolve(e.target.result);
     req.onerror   = e => reject(e.target.error);
   });
@@ -43,26 +37,79 @@ function tx(store, mode, fn) {
   }));
 }
 
-const db = {
-  get:    (store, key)        => tx(store, 'readonly',  s => s.get(key)),
-  set:    (store, key, value) => tx(store, 'readwrite', s => s.put(value, key)),
-  delete: (store, key)        => tx(store, 'readwrite', s => s.delete(key)),
-  clear:  (store)             => tx(store, 'readwrite', s => s.clear()),
+function idbGet(store, key)        { return tx(store, 'readonly',  s => s.get(key)); }
+function idbSet(store, key, value) { return tx(store, 'readwrite', s => s.put(value, key)); }
+function idbDel(store, key)        { return tx(store, 'readwrite', s => s.delete(key)); }
+function idbClear(store)           { return tx(store, 'readwrite', s => s.clear()); }
 
-  getAll(store) {
-    return open().then(db => new Promise((resolve, reject) => {
-      const t       = db.transaction(store, 'readonly');
-      const s       = t.objectStore(store);
-      const results = [];
-      const cursor  = s.openCursor();
-      cursor.onsuccess = e => {
-        const c = e.target.result;
-        if (c) { results.push({ key: c.key, value: c.value }); c.continue(); }
-        else resolve(results);
-      };
-      cursor.onerror = e => reject(e.target.error);
-    }));
+function idbGetAll(store) {
+  return open().then(db => new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readonly');
+    const s = t.objectStore(store);
+    const results = [];
+    const cursor = s.openCursor();
+    cursor.onsuccess = e => {
+      const c = e.target.result;
+      if (c) { results.push({ key: c.key, value: c.value }); c.continue(); }
+      else resolve(results);
+    };
+    cursor.onerror = e => reject(e.target.error);
+  }));
+}
+
+// ── Supabase remote ───────────────────────────────────────────────────────────
+async function getUserId() {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+async function remoteSet(store, key, value) {
+  const user_id = await getUserId();
+  if (!user_id) return;
+  await supabase.from('entries').upsert({ user_id, store, key, value });
+}
+
+async function remoteDel(store, key) {
+  const user_id = await getUserId();
+  if (!user_id) return;
+  await supabase.from('entries').delete()
+    .eq('user_id', user_id).eq('store', store).eq('key', key);
+}
+
+async function syncFromSupabase() {
+  const user_id = await getUserId();
+  if (!user_id) return;
+  const { data, error } = await supabase.from('entries')
+    .select('store, key, value')
+    .eq('user_id', user_id);
+  if (error || !data) return;
+  for (const row of data) {
+    await idbSet(row.store, row.key, row.value);
+  }
+}
+
+// Auto-sync on every page load when a session exists
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session) syncFromSupabase();
+});
+
+// ── Public API (same interface as before) ─────────────────────────────────────
+const db = {
+  get:    idbGet,
+  getAll: idbGetAll,
+
+  async set(store, key, value) {
+    await idbSet(store, key, value);
+    remoteSet(store, key, value);
   },
+
+  async delete(store, key) {
+    await idbDel(store, key);
+    remoteDel(store, key);
+  },
+
+  clear: idbClear,
+  sync:  syncFromSupabase,
 };
 
 export default db;
