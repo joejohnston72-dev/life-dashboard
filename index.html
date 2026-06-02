@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Life Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f0f1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Dashboard">
+  <link rel="apple-touch-icon" href="icon.png">
+</head>
+<body>
+  <header class="header">
+    <h1 class="header__title">Dashboard</h1>
+  </header>
+
+  <main class="grid">
+    <a class="tile tile--calories" href="https://joejohnston72-dev.github.io/calorieAI/">
+      <span class="tile__icon">🔥</span>
+      <span class="tile__label">Calories</span>
+    </a>
+    <a class="tile tile--workout" href="workout/">
+      <span class="tile__icon">💪</span>
+      <span class="tile__label">Workout</span>
+      <span class="tile__badge">Soon</span>
+    </a>
+    <a class="tile tile--finance" href="finance/">
+      <span class="tile__icon">💰</span>
+      <span class="tile__label">Finance</span>
+      <span class="tile__badge">Soon</span>
+    </a>
+    <a class="tile tile--habits" href="habits/">
+      <span class="tile__icon">✅</span>
+      <span class="tile__label">Habits</span>
+      <span class="tile__badge">Soon</span>
+    </a>
+  </main>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
