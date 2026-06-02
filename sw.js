@@ -1,4 +1,4 @@
-const CACHE = 'life-dashboard-v1';
+const CACHE = 'life-dashboard-v2';
 const PRECACHE = [
   '/life-dashboard/',
   '/life-dashboard/index.html',
@@ -6,6 +6,12 @@ const PRECACHE = [
   '/life-dashboard/shared/db.js',
   '/life-dashboard/manifest.json',
   '/life-dashboard/icon.png',
+  '/life-dashboard/habits/index.html',
+  '/life-dashboard/habits/app.js',
+  '/life-dashboard/workout/index.html',
+  '/life-dashboard/workout/app.js',
+  '/life-dashboard/finance/index.html',
+  '/life-dashboard/finance/app.js',
 ];
 
 self.addEventListener('install', e => {

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Workout</title>
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    body { padding-bottom: calc(env(safe-area-inset-bottom) + 80px); }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px var(--gap) 8px;
+    }
+    .back-btn {
+      background: none; border: none; color: var(--text);
+      font-size: 1.4rem; cursor: pointer; padding: 4px; line-height: 1;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 700; flex: 1; }
+    .view-toggle {
+      display: flex;
+      gap: 4px;
+      background: var(--surface);
+      border-radius: 10px;
+      padding: 3px;
+    }
+    .toggle-btn {
+      padding: 5px 12px;
+      border-radius: 7px;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .toggle-btn.active { background: var(--surface2); color: var(--text); font-weight: 600; }
+
+    .section { padding: 0 var(--gap); }
+
+    /* Log view */
+    .session-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border-top: 3px solid #4fc3f7;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .session-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .session-name { font-weight: 700; font-size: 1rem; }
+    .session-date { font-size: 0.75rem; color: var(--text-muted); }
+    .exercise-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.85rem;
+    }
+    .exercise-name { flex: 1; color: var(--text); }
+    .sets-summary { color: var(--text-muted); font-size: 0.8rem; }
+
+    /* Logger view */
+    .logger-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border-top: 3px solid #4fc3f7;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .logger-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .session-name-input {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 700;
+      flex: 1;
+      outline: none;
+    }
+    .session-name-input::placeholder { color: var(--text-muted); font-weight: 400; }
+    .del-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 1rem; cursor: pointer; padding: 4px;
+    }
+
+    .exercise-block { margin-bottom: 14px; }
+    .exercise-block-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .exercise-name-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .exercise-name-input:focus { border-color: #4fc3f7; }
+
+    .sets-table { width: 100%; border-collapse: collapse; }
+    .sets-table th {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 0 0 6px 0;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .sets-table td { padding: 4px 0; }
+    .set-num { font-size: 0.75rem; color: var(--text-muted); width: 24px; }
+    .set-input {
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 6px;
+      padding: 7px 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      width: 70px;
+      outline: none;
+      text-align: center;
+    }
+    .set-input:focus { border-color: #4fc3f7; }
+    .set-del {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 0.9rem; cursor: pointer; padding: 4px 8px;
+    }
+
+    .add-set-btn, .add-exercise-btn {
+      background: none;
+      border: 1px dashed rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 7px;
+      width: 100%;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    .add-exercise-btn { margin-top: 12px; border-color: rgba(79,195,247,0.3); color: #4fc3f7; }
+
+    .fab {
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom) + 20px);
+      right: 20px;
+      padding: 0 20px;
+      height: 52px;
+      border-radius: 26px;
+      background: #4fc3f7;
+      border: none;
+      color: #000;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(79,195,247,0.35);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 60px var(--gap) 0;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <button class="back-btn" onclick="history.back()">←</button>
+    <h1 class="page-title">Workout</h1>
+    <div class="view-toggle">
+      <button class="toggle-btn active" id="tabLog">Log</button>
+      <button class="toggle-btn" id="tabHistory">History</button>
+    </div>
+  </div>
+
+  <div class="section" id="logView"></div>
+  <div class="section" id="historyView" style="display:none"></div>
+
+  <button class="fab" id="saveBtn">Save Workout</button>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

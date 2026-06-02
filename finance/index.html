@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Finance</title>
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    body { padding-bottom: calc(env(safe-area-inset-bottom) + 80px); }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px var(--gap) 12px;
+    }
+    .back-btn {
+      background: none; border: none; color: var(--text);
+      font-size: 1.4rem; cursor: pointer; padding: 4px; line-height: 1;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 700; }
+
+    .section { padding: 0 var(--gap); margin-bottom: 16px; }
+
+    /* Balance card */
+    .balance-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border-top: 3px solid #81c784;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .balance-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; }
+    .balance-amount {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -1px;
+    }
+    .balance-amount.negative { color: #e94560; }
+    .balance-amount.positive { color: #81c784; }
+    .balance-row {
+      display: flex;
+      gap: 16px;
+      margin-top: 14px;
+    }
+    .balance-sub {
+      flex: 1;
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .balance-sub-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 4px; }
+    .balance-sub-val { font-size: 1rem; font-weight: 700; }
+    .income-val { color: #81c784; }
+    .expense-val { color: #e94560; }
+
+    /* Add form */
+    .add-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .add-card-title { font-size: 0.9rem; font-weight: 700; margin-bottom: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .type-toggle {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .type-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 10px;
+      border: 2px solid transparent;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .type-btn.income.active  { border-color: #81c784; color: #81c784; }
+    .type-btn.expense.active { border-color: #e94560; color: #e94560; }
+
+    .form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+    .form-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+    .form-input:focus { border-color: #81c784; }
+    .form-input.amount { max-width: 130px; }
+    select.form-input { appearance: none; }
+
+    .add-tx-btn {
+      width: 100%;
+      padding: 13px;
+      border-radius: 10px;
+      border: none;
+      background: #81c784;
+      color: #000;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    /* Transactions list */
+    .tx-list-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+
+    .tx-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .tx-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .tx-icon.income  { background: rgba(129,199,132,0.15); }
+    .tx-icon.expense { background: rgba(233,69,96,0.15); }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-cat  { font-size: 0.9rem; font-weight: 600; }
+    .tx-note { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tx-date { font-size: 0.7rem; color: var(--text-muted); }
+    .tx-amount { font-size: 1rem; font-weight: 700; }
+    .tx-amount.income  { color: #81c784; }
+    .tx-amount.expense { color: #e94560; }
+    .tx-del {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 0.9rem; cursor: pointer; padding: 4px; opacity: 0.5;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 30px 0;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <button class="back-btn" onclick="history.back()">←</button>
+    <h1 class="page-title">Finance</h1>
+  </div>
+
+  <div class="section">
+    <div class="balance-card">
+      <div class="balance-label">Balance</div>
+      <div class="balance-amount" id="balanceAmt">$0.00</div>
+      <div class="balance-row">
+        <div class="balance-sub">
+          <div class="balance-sub-label">Income</div>
+          <div class="balance-sub-val income-val" id="totalIncome">$0.00</div>
+        </div>
+        <div class="balance-sub">
+          <div class="balance-sub-label">Expenses</div>
+          <div class="balance-sub-val expense-val" id="totalExpenses">$0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="add-card">
+      <div class="add-card-title">Add Transaction</div>
+      <div class="type-toggle">
+        <button class="type-btn income active" id="btnIncome">▲ Income</button>
+        <button class="type-btn expense" id="btnExpense">▼ Expense</button>
+      </div>
+      <div class="form-row">
+        <input class="form-input amount" id="txAmount" type="number" min="0" step="0.01" placeholder="0.00">
+        <select class="form-input" id="txCategory"></select>
+      </div>
+      <input class="form-input" id="txNote" placeholder="Note (optional)" maxlength="60" style="margin-bottom:10px">
+      <button class="add-tx-btn" id="addTxBtn">Add</button>
+    </div>
+
+    <div class="tx-list-title">Recent Transactions</div>
+    <div id="txList"></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

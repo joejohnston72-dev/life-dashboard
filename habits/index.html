@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Habits</title>
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    body { padding-bottom: calc(env(safe-area-inset-bottom) + 80px); }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px var(--gap) 8px;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 1.4rem;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 700; }
+
+    .date-label {
+      padding: 0 var(--gap) 16px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .habits-list {
+      padding: 0 var(--gap);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .habit-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.15s;
+      border-left: 4px solid var(--habit-color, var(--accent));
+    }
+    .habit-row:active { background: var(--surface2); }
+
+    .habit-check {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid var(--habit-color, var(--accent));
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      transition: background 0.15s;
+    }
+    .habit-row.done .habit-check {
+      background: var(--habit-color, var(--accent));
+    }
+
+    .habit-info { flex: 1; min-width: 0; }
+    .habit-name {
+      font-size: 1rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .habit-streak {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .habit-streak span { color: #fbbf24; }
+
+    .habit-delete {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 4px;
+      opacity: 0.5;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 60px var(--gap) 0;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .fab {
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom) + 20px);
+      right: 20px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      font-size: 1.6rem;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(233,69,96,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 10;
+      align-items: flex-end;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius) var(--radius) 0 0;
+      padding: 24px var(--gap) calc(env(safe-area-inset-bottom) + 24px);
+      width: 100%;
+    }
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; display: block; }
+    .form-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+    .form-input:focus { border-color: var(--accent); }
+
+    .color-picker {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .color-swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      cursor: pointer;
+    }
+    .color-swatch.selected { border-color: #fff; }
+
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .btn {
+      flex: 1;
+      padding: 13px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost { background: var(--surface2); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <button class="back-btn" onclick="history.back()">←</button>
+    <h1 class="page-title">Habits</h1>
+  </div>
+  <p class="date-label" id="dateLabel"></p>
+
+  <div class="habits-list" id="habitsList"></div>
+
+  <button class="fab" id="addBtn" aria-label="Add habit">+</button>
+
+  <div class="modal-backdrop" id="modal">
+    <div class="modal">
+      <p class="modal-title">New Habit</p>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input class="form-input" id="habitName" placeholder="e.g. Morning run" maxlength="40">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Color</label>
+        <div class="color-picker" id="colorPicker"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="cancelBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveBtn">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
