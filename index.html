@@ -107,7 +107,7 @@
       <div id="authCodeForm" style="display:none">
         <p class="auth-sub" style="margin-bottom:16px">Enter the 6-digit code sent to your email.</p>
         <input class="auth-input" id="authCode" type="text" inputmode="numeric" autocomplete="one-time-code"
-               maxlength="6" placeholder="123456" style="letter-spacing:8px;font-size:1.4rem">
+               maxlength="8" placeholder="12345678" style="letter-spacing:6px;font-size:1.4rem">
         <button class="auth-btn" id="authVerifyBtn">Verify &amp; sign in</button>
         <button class="auth-btn" id="authResendBtn"
                 style="background:none;color:var(--text-muted);margin-top:8px">Use a different email</button>
@@ -215,7 +215,7 @@
 
     authVerifyBtn.onclick = async () => {
       const token = authCode.value.trim();
-      if (token.length < 6) { authCode.focus(); return; }
+      if (token.length < 6) { authCode.focus(); return; } // 6–8 digit codes
       authVerifyBtn.disabled = true;
       authVerifyBtn.textContent = 'Verifying…';
       const { error } = await supabase.auth.verifyOtp({
