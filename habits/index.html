@@ -6,192 +6,128 @@
   <title>Habits</title>
   <link rel="stylesheet" href="../styles.css">
   <style>
+    :root { --purple:#ce93d8; }
     body { padding-bottom: calc(env(safe-area-inset-bottom) + 80px); }
 
-    .page-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 20px var(--gap) 8px;
-    }
-    .back-btn {
-      background: none;
-      border: none;
-      color: var(--text);
-      font-size: 1.4rem;
-      cursor: pointer;
-      padding: 4px;
-      line-height: 1;
-    }
-    .page-title { font-size: 1.5rem; font-weight: 700; }
+    .page-header { display:flex; align-items:center; gap:12px; padding:20px var(--gap) 8px; }
+    .back-btn { background:none;border:none;color:var(--text);font-size:1.4rem;cursor:pointer;padding:4px;line-height:1; }
+    .page-title { font-size:1.5rem;font-weight:700;flex:1; }
+    .date-label { padding:0 var(--gap) 12px;color:var(--text-muted);font-size:0.85rem; }
 
-    .date-label {
-      padding: 0 var(--gap) 16px;
-      color: var(--text-muted);
-      font-size: 0.85rem;
-    }
+    /* Tabs */
+    .seg { display:flex;gap:4px;background:var(--surface);border-radius:12px;padding:3px;margin:0 var(--gap) 16px; }
+    .seg-btn { flex:1;padding:9px;border:none;border-radius:9px;background:none;color:var(--text-muted);font-size:0.85rem;font-weight:600;cursor:pointer; }
+    .seg-btn.active { background:var(--surface2);color:var(--text); }
 
-    .habits-list {
-      padding: 0 var(--gap);
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
+    .section { display:none; padding:0 var(--gap); }
+    .section.active { display:block; }
 
-    .habit-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      background: var(--surface);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-      transition: background 0.15s;
-      border-left: 4px solid var(--habit-color, var(--accent));
-    }
-    .habit-row:active { background: var(--surface2); }
+    /* ── Habit tracker (existing) ── */
+    .habits-list { display:flex;flex-direction:column;gap:10px; }
+    .habit-row { display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:var(--radius);padding:14px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s;border-left:4px solid var(--habit-color,var(--accent)); }
+    .habit-row:active { background:var(--surface2); }
+    .habit-check { width:26px;height:26px;border-radius:50%;border:2px solid var(--habit-color,var(--accent));flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.85rem;transition:background .15s; }
+    .habit-row.done .habit-check { background:var(--habit-color,var(--accent)); }
+    .habit-info { flex:1;min-width:0; }
+    .habit-name { font-size:1rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .habit-streak { font-size:0.75rem;color:var(--text-muted);margin-top:2px; }
+    .habit-streak span { color:#fbbf24; }
+    .habit-delete { background:none;border:none;color:var(--text-muted);font-size:1.1rem;cursor:pointer;padding:4px;opacity:.5; }
 
-    .habit-check {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      border: 2px solid var(--habit-color, var(--accent));
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.85rem;
-      transition: background 0.15s;
-    }
-    .habit-row.done .habit-check {
-      background: var(--habit-color, var(--accent));
-    }
+    .empty-state { text-align:center;color:var(--text-muted);padding:50px var(--gap) 0;font-size:0.95rem;line-height:1.7; }
 
-    .habit-info { flex: 1; min-width: 0; }
-    .habit-name {
-      font-size: 1rem;
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    /* ── Reminders ── */
+    .push-banner {
+      background:var(--surface);border:1px solid rgba(206,147,216,0.3);border-radius:12px;
+      padding:14px;margin-bottom:16px;display:flex;align-items:center;gap:12px;
     }
-    .habit-streak {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-    .habit-streak span { color: #fbbf24; }
+    .push-banner-text { flex:1;font-size:0.82rem;color:var(--text-muted);line-height:1.4; }
+    .push-banner-btn { background:var(--purple);border:none;border-radius:9px;color:#000;font-size:0.8rem;font-weight:700;padding:8px 14px;cursor:pointer;white-space:nowrap; }
+    .push-banner.ok { border-color:rgba(52,211,153,0.3); }
+    .push-banner.ok .push-banner-text { color:#34d399; }
 
-    .habit-delete {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 1.1rem;
-      cursor: pointer;
-      padding: 4px;
-      opacity: 0.5;
-    }
+    .nl-box { background:var(--surface);border-radius:var(--radius);padding:14px;margin-bottom:16px; }
+    .nl-label { font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:10px; }
+    .nl-input { width:100%;background:var(--surface2);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;color:var(--text);font-size:1rem;outline:none;resize:none;font-family:inherit;line-height:1.4; }
+    .nl-input:focus { border-color:var(--purple); }
+    .nl-examples { font-size:0.72rem;color:var(--text-muted);margin-top:8px;line-height:1.6; }
+    .nl-submit { width:100%;margin-top:10px;padding:12px;border:none;border-radius:10px;background:var(--purple);color:#000;font-size:0.95rem;font-weight:700;cursor:pointer; }
+    .nl-submit:disabled { opacity:.6; }
 
-    .empty-state {
-      text-align: center;
-      color: var(--text-muted);
-      padding: 60px var(--gap) 0;
-      font-size: 0.95rem;
-      line-height: 1.6;
-    }
+    .rem-card { background:var(--surface);border-radius:14px;border-left:4px solid var(--purple);padding:14px;margin-bottom:10px; }
+    .rem-card.off { opacity:0.5;border-left-color:var(--text-muted); }
+    .rem-top { display:flex;align-items:flex-start;gap:10px; }
+    .rem-body { flex:1;min-width:0; }
+    .rem-text { font-size:0.95rem;font-weight:600;margin-bottom:3px; }
+    .rem-sched { font-size:0.78rem;color:var(--purple); }
+    .rem-card.off .rem-sched { color:var(--text-muted); }
+    .rem-toggle { width:42px;height:25px;border-radius:13px;background:var(--surface2);border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .15s; }
+    .rem-toggle.on { background:var(--purple); }
+    .rem-toggle::after { content:'';position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;transition:left .15s; }
+    .rem-toggle.on::after { left:20px; }
+    .rem-actions { display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05); }
+    .rem-act { background:none;border:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;padding:2px 4px; }
+    .rem-act.del { color:#e94560; }
 
-    .fab {
-      position: fixed;
-      bottom: calc(env(safe-area-inset-bottom) + 20px);
-      right: 20px;
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background: var(--accent);
-      border: none;
-      color: #fff;
-      font-size: 1.6rem;
-      cursor: pointer;
-      box-shadow: 0 4px 16px rgba(233,69,96,0.4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      -webkit-tap-highlight-color: transparent;
-    }
+    .fab { position:fixed;bottom:calc(env(safe-area-inset-bottom) + 20px);right:20px;width:56px;height:56px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:1.6rem;cursor:pointer;box-shadow:0 4px 16px rgba(233,69,96,0.4);display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent; }
+    .fab.hidden { display:none; }
 
-    /* Modal */
-    .modal-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.6);
-      z-index: 10;
-      align-items: flex-end;
-    }
-    .modal-backdrop.open { display: flex; }
-
-    .modal {
-      background: var(--surface);
-      border-radius: var(--radius) var(--radius) 0 0;
-      padding: 24px var(--gap) calc(env(safe-area-inset-bottom) + 24px);
-      width: 100%;
-    }
-    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
-
-    .form-group { margin-bottom: 16px; }
-    .form-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; display: block; }
-    .form-input {
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 10px;
-      padding: 12px 14px;
-      color: var(--text);
-      font-size: 1rem;
-      outline: none;
-    }
-    .form-input:focus { border-color: var(--accent); }
-
-    .color-picker {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .color-swatch {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      border: 3px solid transparent;
-      cursor: pointer;
-    }
-    .color-swatch.selected { border-color: #fff; }
-
-    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
-    .btn {
-      flex: 1;
-      padding: 13px;
-      border-radius: 10px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-    }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-ghost { background: var(--surface2); color: var(--text); }
+    /* Modals */
+    .modal-backdrop { display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10;align-items:flex-end; }
+    .modal-backdrop.open { display:flex; }
+    .modal { background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:24px var(--gap) calc(env(safe-area-inset-bottom) + 24px);width:100%; }
+    .modal-title { font-size:1.05rem;font-weight:700;margin-bottom:18px; }
+    .form-group { margin-bottom:16px; }
+    .form-label { font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;display:block; }
+    .form-input { width:100%;background:var(--surface2);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px 14px;color:var(--text);font-size:1rem;outline:none; }
+    .form-input:focus { border-color:var(--accent); }
+    .color-picker { display:flex;gap:10px;flex-wrap:wrap; }
+    .color-swatch { width:32px;height:32px;border-radius:50%;border:3px solid transparent;cursor:pointer; }
+    .color-swatch.selected { border-color:#fff; }
+    .modal-actions { display:flex;gap:10px;margin-top:20px; }
+    .btn { flex:1;padding:13px;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;border:none; }
+    .btn-primary { background:var(--accent);color:#fff; }
+    .btn-ghost { background:var(--surface2);color:var(--text); }
   </style>
 </head>
 <body>
   <div class="page-header">
     <button class="back-btn" onclick="history.back()">←</button>
     <h1 class="page-title">Habits</h1>
+    <button class="back-btn" id="keyBtn" title="API key" style="font-size:1.1rem">🔑</button>
   </div>
   <p class="date-label" id="dateLabel"></p>
 
-  <div class="habits-list" id="habitsList"></div>
+  <div class="seg">
+    <button class="seg-btn active" data-tab="Today">Today</button>
+    <button class="seg-btn" data-tab="Reminders">Reminders</button>
+  </div>
+
+  <!-- Habit tracker -->
+  <div class="section active" id="secToday">
+    <div class="habits-list" id="habitsList"></div>
+  </div>
+
+  <!-- Reminders -->
+  <div class="section" id="secReminders">
+    <div class="push-banner" id="pushBanner">
+      <div class="push-banner-text" id="pushBannerText">Enable notifications to receive your reminders.</div>
+      <button class="push-banner-btn" id="pushBannerBtn">Enable</button>
+    </div>
+
+    <div class="nl-box">
+      <div class="nl-label">New reminder — just describe it</div>
+      <textarea class="nl-input" id="nlInput" rows="2" placeholder="Remind me every Thursday at 3pm to take vitamin D"></textarea>
+      <div class="nl-examples">Try: "every weekday at 8am drink water" · "1st of each month pay rent" · "tomorrow at 6pm call mum"</div>
+      <button class="nl-submit" id="nlSubmit">Add reminder</button>
+    </div>
+
+    <div id="remindersList"></div>
+  </div>
 
   <button class="fab" id="addBtn" aria-label="Add habit">+</button>
 
+  <!-- Add habit modal -->
   <div class="modal-backdrop" id="modal">
     <div class="modal">
       <p class="modal-title">New Habit</p>
@@ -210,6 +146,49 @@
     </div>
   </div>
 
+  <!-- API key modal -->
+  <div class="modal-backdrop" id="keyModal">
+    <div class="modal">
+      <p class="modal-title">Anthropic API Key</p>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5">
+        Used to understand your plain-language reminders. Get one free at console.anthropic.com — costs a fraction of a penny per reminder.
+      </p>
+      <div class="form-group">
+        <input class="form-input" id="keyInput" placeholder="sk-ant-api03-..." autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="keyCancel">Cancel</button>
+        <button class="btn btn-primary" id="keySave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit reminder modal -->
+  <div class="modal-backdrop" id="remEditModal">
+    <div class="modal">
+      <p class="modal-title">Edit Reminder</p>
+      <div class="form-group">
+        <label class="form-label">Reminder text</label>
+        <input class="form-input" id="remEditText" maxlength="120">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Re-describe the schedule (optional)</label>
+        <input class="form-input" id="remEditSchedule" placeholder="e.g. every Monday and Friday at 9am">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="remEditCancel">Cancel</button>
+        <button class="btn btn-primary" id="remEditSave">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloading) return; reloading = true; location.reload(); });
+      navigator.serviceWorker.register('../sw.js', { updateViaCache:'none' }).then(reg => { reg.update(); setInterval(() => reg.update(), 60000); });
+    }
+  </script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
