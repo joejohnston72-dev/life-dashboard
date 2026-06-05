@@ -15,13 +15,25 @@ const fmtTime = secs => {
   const m = Math.floor(secs / 60), s = secs % 60;
   return m + ':' + String(s).padStart(2,'0');
 };
+const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+
 function parseToDate(str) {
   if (!str) return null;
-  // Already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return new Date(str + 'T12:00:00');
-  // "2024-01-15 09:30:00" or "2024-01-15T09:30:00" — replace space with T
-  if (/^\d{4}-\d{2}-\d{2}[ T]/.test(str)) return new Date(str.replace(' ', 'T'));
-  // Any other format — let the browser try
+  str = str.trim();
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str))
+    return new Date(str + 'T12:00:00');
+  // "2024-01-15 09:30:00" or "2024-01-15T09:30:00"
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(str))
+    return new Date(str.replace(' ', 'T'));
+  // Hevy format: "4 Jun 2026, 17:14" or "14 Jun 2026, 09:05"
+  const hm = str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})/);
+  if (hm) {
+    const mon = MONTHS[hm[2].toLowerCase()];
+    if (mon !== undefined)
+      return new Date(+hm[3], mon, +hm[1], +hm[4], +hm[5]);
+  }
+  // Fallback: browser parse
   const d = new Date(str);
   return isNaN(d) ? null : d;
 }
@@ -762,7 +774,10 @@ document.getElementById('csvInput').onchange = async e => {
 
     for (const s of sessions) {
       const existing = await db.get(STORE, 'session-' + s.id);
-      if (!existing) await db.set(STORE, 'session-' + s.id, s);
+      // Overwrite if new or if previously imported with a bad/missing date
+      if (!existing || !existing.date || existing.date === 'Invalid Date') {
+        await db.set(STORE, 'session-' + s.id, s);
+      }
     }
 
     progress.textContent = `✅ Imported ${sessions.length} workouts from Hevy`;
@@ -848,8 +863,22 @@ function guessCategory(name) {
   return 'Back'; // fallback
 }
 
-// Minimal CSV parser (handles quoted fields with commas/newlines)
+// Delimiter-detecting parser — handles TSV (Hevy) and CSV
 function parseCSV(text) {
+  const firstLine = text.split('\n')[0];
+  const tabs   = (firstLine.match(/\t/g)  || []).length;
+  const commas = (firstLine.match(/,/g)   || []).length;
+  return tabs > commas ? parseTSV(text) : parseCommaCSV(text);
+}
+
+function parseTSV(text) {
+  return text
+    .split('\n')
+    .map(line => line.replace(/\r$/, '').split('\t'))
+    .filter(row => row.some(f => f.trim() !== ''));
+}
+
+function parseCommaCSV(text) {
   const rows = [];
   let row = [], field = '', inQuote = false;
   for (let i = 0; i < text.length; i++) {
