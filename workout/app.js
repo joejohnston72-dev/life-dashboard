@@ -15,7 +15,25 @@ const fmtTime = secs => {
   const m = Math.floor(secs / 60), s = secs % 60;
   return m + ':' + String(s).padStart(2,'0');
 };
-const fmtDate = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+function parseToDate(str) {
+  if (!str) return null;
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return new Date(str + 'T12:00:00');
+  // "2024-01-15 09:30:00" or "2024-01-15T09:30:00" — replace space with T
+  if (/^\d{4}-\d{2}-\d{2}[ T]/.test(str)) return new Date(str.replace(' ', 'T'));
+  // Any other format — let the browser try
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
+}
+function extractDateStr(str) {
+  const d = parseToDate(str);
+  return d ? d.toISOString().slice(0, 10) : '';
+}
+const fmtDate = iso => {
+  const d = parseToDate(iso);
+  if (!d || isNaN(d)) return 'Unknown date';
+  return d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+};
 
 // ── Screen wake lock ──────────────────────────────────────────────────────────
 let wakeLock = null;
@@ -408,7 +426,7 @@ async function getPreviousPerformance(exerciseName) {
   const sessions = all
     .filter(r => r.key.startsWith('session-') && r.value?.exercises)
     .map(r => r.value)
-    .sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    .sort((a,b) => (parseToDate(b.date||b.startTime||'')?.getTime()||0) - (parseToDate(a.date||a.startTime||'')?.getTime()||0));
   for (const s of sessions) {
     if (s.id === activeSession?.id) continue;
     const ex = s.exercises.find(e => e.name === exerciseName);
@@ -500,7 +518,7 @@ async function renderDashboard() {
   const sessions = all
     .filter(r => r.key.startsWith('session-') && r.value?.exercises)
     .map(r => r.value)
-    .sort((a,b) => (b.date||'').localeCompare(a.date||''))
+    .sort((a,b) => (parseToDate(b.date||b.startTime||'')?.getTime()||0) - (parseToDate(a.date||a.startTime||'')?.getTime()||0))
     .slice(0,5);
 
   const recentEl = document.getElementById('recentList');
@@ -523,7 +541,7 @@ function workoutCard(s) {
     <div class="workout-card" data-sid="${s.id}">
       <div class="wc-header">
         <span class="wc-title">${esc(s.title||'Workout')}</span>
-        <span class="wc-date">${fmtDate(s.date||s.startTime?.slice(0,10)||'')}</span>
+        <span class="wc-date">${fmtDate(s.date||s.startTime||'')}</span>
       </div>
       <div class="wc-meta">${fmtTime(s.duration||0)} · ${(s.exercises||[]).length} exercises · ${Math.round(vol).toLocaleString()} kg</div>
       <div class="wc-exercises">${exList}${more}</div>
@@ -536,9 +554,10 @@ async function renderHistory() {
   const sessions = all
     .filter(r => r.key.startsWith('session-') && r.value?.exercises)
     .map(r => r.value)
-    .sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    .sort((a,b) => (parseToDate(b.date||b.startTime||'')?.getTime()||0) - (parseToDate(a.date||a.startTime||'')?.getTime()||0));
 
   const el = document.getElementById('historyList');
+  document.getElementById('buildRoutinesBtn').style.display = sessions.length ? '' : 'none';
   if (!sessions.length) {
     el.innerHTML = `<div class="empty-state">No history yet.<br>Import your Hevy CSV to load past workouts.</div>`;
     return;
@@ -579,7 +598,7 @@ async function openHistoryDetail(sessionId) {
   body.innerHTML = `
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
       <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;min-width:80px;text-align:center">
-        <div class="stat-val">${fmtDate(s.date||'')}</div>
+        <div class="stat-val">${fmtDate(s.date||s.startTime||'')}</div>
         <div class="stat-label">Date</div>
       </div>
       <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center">
@@ -642,6 +661,65 @@ document.getElementById('hdDelete').onclick = async () => {
   document.getElementById('historyDetail').classList.remove('visible');
   renderHistory();
   renderDashboard();
+};
+
+// ── Build routines from history ───────────────────────────────────────────────
+document.getElementById('buildRoutinesBtn').onclick = async () => {
+  const panel = document.getElementById('routineBuilder');
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+
+  const all = await db.getAll(STORE);
+  const sessions = all
+    .filter(r => r.key.startsWith('session-') && r.value?.exercises?.length)
+    .map(r => r.value)
+    .sort((a,b) => (parseToDate(b.date||b.startTime||'')?.getTime()||0) - (parseToDate(a.date||a.startTime||'')?.getTime()||0));
+
+  // Group by title, keep most recent of each
+  const byTitle = {};
+  sessions.forEach(s => {
+    const key = (s.title||'Workout').trim();
+    if (!byTitle[key]) byTitle[key] = s;
+  });
+
+  const existing  = await getTemplates();
+  const existingNames = new Set(existing.map(t => t.name.trim()));
+
+  const container = document.getElementById('routineCandidates');
+  const candidates = Object.entries(byTitle);
+
+  container.innerHTML = candidates.map(([title, s]) => {
+    const saved = existingNames.has(title);
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)" data-title="${esc(title)}" data-sid="${s.id}">
+        <div style="flex:1">
+          <div style="font-size:0.9rem;font-weight:600">${esc(title)}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted)">${s.exercises.map(e=>esc(e.name)).join(' · ')}</div>
+        </div>
+        <button class="routine-save-btn" data-title="${esc(title)}" data-sid="${s.id}"
+          style="background:${saved?'rgba(52,211,153,0.15)':'var(--surface2)'};border:none;border-radius:8px;
+                 color:${saved?'#34d399':'var(--text-muted)'};font-size:0.8rem;padding:6px 12px;cursor:pointer;white-space:nowrap">
+          ${saved ? '✓ Saved' : 'Save'}
+        </button>
+      </div>`;
+  }).join('') || '<div style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:16px">No workouts in history yet.</div>';
+
+  container.querySelectorAll('.routine-save-btn').forEach(btn => {
+    btn.onclick = async () => {
+      if (btn.textContent.trim().startsWith('✓')) return;
+      const s = await db.get(STORE, 'session-' + btn.dataset.sid);
+      if (!s) return;
+      await saveTemplate(btn.dataset.title, s.exercises);
+      btn.textContent = '✓ Saved';
+      btn.style.background = 'rgba(52,211,153,0.15)';
+      btn.style.color = '#34d399';
+    };
+  });
+
+  panel.style.display = '';
+};
+
+document.getElementById('routineBuilderDone').onclick = () => {
+  document.getElementById('routineBuilder').style.display = 'none';
 };
 
 // ── Library render ────────────────────────────────────────────────────────────
@@ -720,7 +798,7 @@ function parseHevyCSV(text) {
       workouts[wKey] = {
         id:        uid(),
         title:     row.title || 'Workout',
-        date:      start ? start.slice(0,10) : new Date().toISOString().slice(0,10),
+        date:      extractDateStr(start) || new Date().toISOString().slice(0,10),
         startTime: start,
         endTime:   end,
         duration,

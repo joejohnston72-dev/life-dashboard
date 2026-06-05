@@ -356,8 +356,15 @@
   <!-- History -->
   <div class="section" id="secHistory">
     <button class="import-btn" id="importBtn">📥 Import from Hevy (CSV)</button>
+    <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none">⚡ Build Routines from History</button>
     <div class="import-progress" id="importProgress"></div>
     <input type="file" id="csvInput" accept=".csv" style="display:none">
+    <!-- Routine builder panel -->
+    <div id="routineBuilder" style="display:none;background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:14px">
+      <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:12px">Save as Routine — tap to add</div>
+      <div id="routineCandidates"></div>
+      <button id="routineBuilderDone" style="margin-top:10px;width:100%;padding:10px;border-radius:10px;border:none;background:var(--surface2);color:var(--text-muted);font-size:0.85rem;cursor:pointer">Done</button>
+    </div>
     <div id="historyList"></div>
   </div>
 
