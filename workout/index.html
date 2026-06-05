@@ -363,6 +363,8 @@
 
     <div class="section-heading" style="margin-top:16px">Recent</div>
     <div id="recentList"></div>
+
+    <div style="text-align:center;color:var(--text-muted);font-size:0.65rem;padding:20px 0 4px;opacity:0.6">build v6 · sound + inline timer</div>
   </div>
 
   <!-- History -->
@@ -491,6 +493,17 @@
   </div>
 </div>
 
+<script>
+  // Keep the service worker fresh and reload when a new build activates
+  if ('serviceWorker' in navigator) {
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return; reloading = true; location.reload();
+    });
+    navigator.serviceWorker.register('../sw.js', { updateViaCache: 'none' })
+      .then(reg => { reg.update(); setInterval(() => reg.update(), 60 * 1000); });
+  }
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -208,7 +208,7 @@ function renderActiveSession() {
       const ex  = activeSession.exercises[ei];
       const set = ex.sets[si];
       set.done = !set.done;
-      if (set.done) startRest(ex.restTime ?? 60, ex.name);
+      if (set.done) { unlockAudio(); startRest(ex.restTime ?? 60, ex.name); }
       renderActiveSession();
     };
   });
@@ -322,6 +322,36 @@ function cancelWorkout() {
   document.getElementById('miniBar').classList.remove('visible');
 }
 
+// ── Rest-end chime (Web Audio — no asset needed) ─────────────────────────────
+let audioCtx = null;
+function unlockAudio() {
+  // Must be called from a user gesture (e.g. checking off a set) so iOS allows sound
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (_) {}
+}
+function playChime() {
+  if (!audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    // three rising beeps
+    [880, 1100, 1320].forEach((freq, i) => {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = now + i * 0.18;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.4, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    });
+  } catch (_) {}
+}
+
 // ── Rest timer (inline, non-blocking bar above footer) ───────────────────────
 function startRest(secs = 60, exName = '') {
   if (secs <= 0) { skipRest(); return; }   // rest disabled for this exercise
@@ -336,8 +366,9 @@ function startRest(secs = 60, exName = '') {
     updateRestDisplay();
     if (restSecs <= 0) {
       clearInterval(restTimer);
+      playChime();
       try { navigator.vibrate?.([200,100,200]); } catch(_) {}
-      setTimeout(skipRest, 1500); // auto-dismiss shortly after hitting zero
+      setTimeout(skipRest, 2000); // auto-dismiss shortly after hitting zero
     }
   }, 1000);
 }
