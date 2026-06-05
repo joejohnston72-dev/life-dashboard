@@ -9,6 +9,12 @@ if (!session) { window.location.href = '../'; throw new Error('unauthenticated')
 // ── Constants & helpers ───────────────────────────────────────────────────────
 const STORE = 'workout';
 const uid   = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+// Deterministic ID for Hevy imports — same workout always gets same key
+function stableId(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return 'hevy-' + Math.abs(h).toString(36);
+}
 const esc   = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const fmtKg = v => (v || 0) % 1 === 0 ? String(v || 0) : String(v || 0);
 const fmtTime = secs => {
@@ -757,6 +763,19 @@ async function renderLibrary() {
 }
 document.getElementById('libSearch').oninput = renderLibrary;
 
+// ── Clear history ─────────────────────────────────────────────────────────────
+document.getElementById('clearHistoryBtn').onclick = async () => {
+  if (!confirm('Delete ALL workout sessions? This cannot be undone.\n\nTemplates and custom exercises will be kept.')) return;
+  const all = await db.getAll(STORE);
+  for (const { key } of all) {
+    if (key.startsWith('session-') || key.startsWith('hevy-')) {
+      await db.delete(STORE, key);
+    }
+  }
+  renderHistory();
+  renderDashboard();
+};
+
 // ── Hevy CSV import ───────────────────────────────────────────────────────────
 document.getElementById('importBtn').onclick = () => document.getElementById('csvInput').click();
 
@@ -811,7 +830,7 @@ function parseHevyCSV(text) {
         try { duration = Math.round((new Date(end) - new Date(start)) / 1000); } catch(_) {}
       }
       workouts[wKey] = {
-        id:        uid(),
+        id:        stableId(wKey),
         title:     row.title || 'Workout',
         date:      extractDateStr(start) || new Date().toISOString().slice(0,10),
         startTime: start,
@@ -904,3 +923,5 @@ function parseCommaCSV(text) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 renderDashboard();
+// Pre-populate history state so Build Routines button shows correctly
+renderHistory();
