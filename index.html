@@ -102,11 +102,15 @@
       <p class="auth-sub">Sign in with your email to keep your data synced across all your devices.</p>
       <div id="authForm">
         <input class="auth-input" id="authEmail" type="email" placeholder="your@email.com" autocomplete="email">
-        <button class="auth-btn" id="authBtn">Send magic link</button>
+        <button class="auth-btn" id="authBtn">Send code</button>
       </div>
-      <div class="auth-sent" id="authSent">
-        <span>✉️</span>
-        Check your email for the sign-in link.<br>You can close this tab.
+      <div id="authCodeForm" style="display:none">
+        <p class="auth-sub" style="margin-bottom:16px">Enter the 6-digit code sent to your email.</p>
+        <input class="auth-input" id="authCode" type="text" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" placeholder="123456" style="letter-spacing:8px;font-size:1.4rem">
+        <button class="auth-btn" id="authVerifyBtn">Verify &amp; sign in</button>
+        <button class="auth-btn" id="authResendBtn"
+                style="background:none;color:var(--text-muted);margin-top:8px">Use a different email</button>
       </div>
     </div>
   </div>
@@ -156,13 +160,17 @@
   <script type="module">
     import { supabase } from './shared/supabase.js';
 
-    const overlay   = document.getElementById('authOverlay');
-    const authForm  = document.getElementById('authForm');
-    const authSent  = document.getElementById('authSent');
-    const authEmail = document.getElementById('authEmail');
-    const authBtn   = document.getElementById('authBtn');
-    const signoutBtn = document.getElementById('signoutBtn');
-    const userEmailEl = document.getElementById('userEmail');
+    const overlay      = document.getElementById('authOverlay');
+    const authForm     = document.getElementById('authForm');
+    const authCodeForm = document.getElementById('authCodeForm');
+    const authEmail    = document.getElementById('authEmail');
+    const authCode     = document.getElementById('authCode');
+    const authBtn      = document.getElementById('authBtn');
+    const authVerifyBtn = document.getElementById('authVerifyBtn');
+    const authResendBtn = document.getElementById('authResendBtn');
+    const signoutBtn   = document.getElementById('signoutBtn');
+    const userEmailEl  = document.getElementById('userEmail');
+    let   pendingEmail = '';
 
     function showDashboard(user) {
       overlay.classList.remove('visible');
@@ -194,16 +202,38 @@
       authBtn.textContent = 'Sending…';
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: 'https://joejohnston72-dev.github.io/life-dashboard/' },
+        options: { shouldCreateUser: true },
       });
-      if (error) {
-        authBtn.disabled = false;
-        authBtn.textContent = 'Send magic link';
-        alert(error.message);
-      } else {
-        authForm.style.display = 'none';
-        authSent.style.display = 'block';
-      }
+      authBtn.disabled = false;
+      authBtn.textContent = 'Send code';
+      if (error) { alert(error.message); return; }
+      pendingEmail = email;
+      authForm.style.display     = 'none';
+      authCodeForm.style.display = 'block';
+      authCode.focus();
+    };
+
+    authVerifyBtn.onclick = async () => {
+      const token = authCode.value.trim();
+      if (token.length < 6) { authCode.focus(); return; }
+      authVerifyBtn.disabled = true;
+      authVerifyBtn.textContent = 'Verifying…';
+      const { error } = await supabase.auth.verifyOtp({
+        email: pendingEmail, token, type: 'email',
+      });
+      authVerifyBtn.disabled = false;
+      authVerifyBtn.textContent = 'Verify & sign in';
+      if (error) { alert(error.message); authCode.select(); return; }
+      // onAuthStateChange will reveal the dashboard
+    };
+
+    authCode.addEventListener('keydown', e => { if (e.key === 'Enter') authVerifyBtn.click(); });
+
+    authResendBtn.onclick = () => {
+      authCodeForm.style.display = 'none';
+      authForm.style.display     = 'block';
+      authCode.value = '';
+      authEmail.focus();
     };
 
     signoutBtn.onclick = () => supabase.auth.signOut();
