@@ -68,7 +68,6 @@ let sessionSecs   = 0;
 // ── Rest timer state ──────────────────────────────────────────────────────────
 let restTimer     = null;
 let restSecs      = 0;
-let defaultRest   = 90;
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 let activeTab = 'Dashboard';
@@ -141,6 +140,13 @@ function renderActiveSession() {
         <button class="ex-menu-btn" data-ei="${ei}">⋯</button>
       </div>
       ${ex.prevPerf ? `<div class="ex-prev-note">Previous: ${esc(ex.prevPerf)}</div>` : ''}
+      <div class="ex-rest-control">
+        <span class="ex-rest-icon">⏱</span>
+        <span class="ex-rest-label">Rest timer</span>
+        <button class="ex-rest-step" data-ei="${ei}" data-delta="-15">−</button>
+        <span class="ex-rest-value" id="restval-${ei}">${fmtTime(ex.restTime ?? 60)}</span>
+        <button class="ex-rest-step" data-ei="${ei}" data-delta="15">+</button>
+      </div>
       <input class="ex-notes-input" placeholder="Notes…" value="${esc(ex.notes||'')}"
              data-ei="${ei}" data-field="notes">
       <table class="sets-table">
@@ -199,10 +205,21 @@ function renderActiveSession() {
   body.querySelectorAll('.set-check').forEach(btn => {
     btn.onclick = () => {
       const { ei, si } = btn.dataset;
-      const set = activeSession.exercises[ei].sets[si];
+      const ex  = activeSession.exercises[ei];
+      const set = ex.sets[si];
       set.done = !set.done;
-      if (set.done) startRest();
+      if (set.done) startRest(ex.restTime ?? 60, ex.name);
       renderActiveSession();
+    };
+  });
+
+  body.querySelectorAll('.ex-rest-step').forEach(btn => {
+    btn.onclick = () => {
+      const ei = parseInt(btn.dataset.ei);
+      const ex = activeSession.exercises[ei];
+      const cur = ex.restTime ?? 60;
+      ex.restTime = Math.max(0, cur + parseInt(btn.dataset.delta));
+      document.getElementById('restval-' + ei).textContent = fmtTime(ex.restTime);
     };
   });
 
@@ -305,52 +322,48 @@ function cancelWorkout() {
   document.getElementById('miniBar').classList.remove('visible');
 }
 
-// ── Rest timer ────────────────────────────────────────────────────────────────
-function startRest(secs = defaultRest) {
+// ── Rest timer (inline, non-blocking bar above footer) ───────────────────────
+function startRest(secs = 60, exName = '') {
+  if (secs <= 0) { skipRest(); return; }   // rest disabled for this exercise
   clearInterval(restTimer);
   restSecs = secs;
+  const bar = document.getElementById('restBar');
+  bar.classList.add('visible');
+  document.getElementById('restBarName').textContent = exName ? `Rest — ${exName}` : 'Rest';
   updateRestDisplay();
-  document.getElementById('restTimer').classList.add('visible');
   restTimer = setInterval(() => {
     restSecs--;
+    updateRestDisplay();
     if (restSecs <= 0) {
       clearInterval(restTimer);
-      restSecs = 0;
-      updateRestDisplay();
       try { navigator.vibrate?.([200,100,200]); } catch(_) {}
-    } else {
-      updateRestDisplay();
+      setTimeout(skipRest, 1500); // auto-dismiss shortly after hitting zero
     }
   }, 1000);
 }
 
 function updateRestDisplay() {
-  const el = document.getElementById('restCount');
-  const m = Math.floor(restSecs / 60), s = restSecs % 60;
-  el.textContent = m + ':' + String(s).padStart(2,'0');
-  el.className = 'rest-count' + (restSecs <= 0 ? ' done' : restSecs <= 10 ? ' low' : '');
-  document.getElementById('restTotal').textContent = defaultRest + 's';
+  const el = document.getElementById('restBarCount');
+  if (!el) return;
+  el.textContent = fmtTime(Math.max(0, restSecs));
+  el.className = 'rest-bar-count' + (restSecs <= 0 ? ' done' : restSecs <= 10 ? ' low' : '');
 }
 
 function skipRest() {
   clearInterval(restTimer);
-  document.getElementById('restTimer').classList.remove('visible');
+  restSecs = 0;
+  document.getElementById('restBar')?.classList.remove('visible');
 }
 
-function adjustRest(delta) {
-  defaultRest = Math.max(10, defaultRest + delta);
-  restSecs    = Math.max(0, restSecs + delta);
+function bumpRest(delta) {
+  if (!document.getElementById('restBar')?.classList.contains('visible')) return;
+  restSecs = Math.max(1, restSecs + delta);
   updateRestDisplay();
-}
-
-function handleRestBgClick(e) {
-  if (e.target === document.getElementById('restTimer')) skipRest();
 }
 
 // expose to HTML
 window.skipRest = skipRest;
-window.adjustRest = adjustRest;
-window.handleRestBgClick = handleRestBgClick;
+window.bumpRest = bumpRest;
 window.handleSummaryBgClick = handleSummaryBgClick;
 window.openActiveWorkout = openActiveWorkout;
 
@@ -429,7 +442,7 @@ async function renderExPicker() {
 async function addExerciseToSession(name, category) {
   const prev = await getPreviousPerformance(name);
   activeSession.exercises.push({
-    id: uid(), name, category, notes: '',
+    id: uid(), name, category, notes: '', restTime: prev?.restTime ?? 60,
     prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
     prevSets: prev?.sets || null,
     sets: [{ id: uid(), type: 'normal', done: false,
@@ -492,7 +505,7 @@ document.getElementById('templateNameSave').onclick = async () => {
   templates.push({
     id: uid(), name,
     exercises: activeSession.exercises.map(e => ({
-      name: e.name, category: e.category,
+      name: e.name, category: e.category, restTime: e.restTime ?? 60,
       sets: e.sets.map(s => ({ weight: s.weight, reps: s.reps, type: s.type })),
     })),
   });
@@ -663,7 +676,7 @@ async function saveTemplate(name, exercises) {
   templates.push({
     id: uid(), name,
     exercises: exercises.map(e => ({
-      name: e.name, category: e.category,
+      name: e.name, category: e.category, restTime: e.restTime ?? 60,
       sets: e.sets.filter(s => s.done||s.weight||s.reps).map(s => ({ weight: s.weight, reps: s.reps, type: s.type })),
     })),
   });
@@ -772,6 +785,14 @@ document.getElementById('clearHistoryBtn').onclick = async () => {
       await db.delete(STORE, key);
     }
   }
+  // Belt-and-braces: bulk-delete remotely so a sync can't bring them back
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('entries').delete()
+        .eq('user_id', user.id).eq('store', STORE).like('key', 'session-%');
+    }
+  } catch (_) {}
   renderHistory();
   renderDashboard();
 };

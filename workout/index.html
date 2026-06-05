@@ -163,35 +163,47 @@
       cursor:pointer; text-align:center;
     }
 
-    /* ── Rest timer ── */
-    #restTimer {
-      position:fixed; inset:0; z-index:100; background:rgba(0,0,0,0.75);
-      display:flex; align-items:flex-end;
-      opacity:0; pointer-events:none; transition:opacity .2s;
+    /* ── Per-exercise rest control ── */
+    .ex-rest-control {
+      display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-left:16px;
     }
-    #restTimer.visible { opacity:1; pointer-events:all; }
-    .rest-sheet {
-      width:100%; background:var(--surface); border-radius:var(--radius) var(--radius) 0 0;
-      padding:28px var(--gap) calc(env(safe-area-inset-bottom) + 28px);
-      text-align:center;
+    .ex-rest-icon  { font-size:0.85rem; }
+    .ex-rest-label { font-size:0.75rem; color:var(--text-muted); flex:1; }
+    .ex-rest-value {
+      font-size:0.85rem; font-weight:700; min-width:42px; text-align:center;
+      font-variant-numeric:tabular-nums; color:var(--blue);
     }
-    .rest-label { font-size:0.8rem; color:var(--text-muted); margin-bottom:8px; letter-spacing:.04em; text-transform:uppercase; }
-    .rest-count {
-      font-size:5rem; font-weight:800; letter-spacing:-3px; color:var(--text);
-      font-variant-numeric:tabular-nums; line-height:1; margin-bottom:24px;
+    .ex-rest-step {
+      width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.15);
+      background:var(--surface); color:var(--text); font-size:1rem; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; -webkit-tap-highlight-color:transparent;
     }
-    .rest-count.low { color:var(--amber); }
-    .rest-count.done { color:var(--green); }
-    .rest-btns { display:flex; gap:10px; }
-    .rest-btn {
-      flex:1; padding:13px; border-radius:12px; border:none; cursor:pointer;
-      font-size:0.9rem; font-weight:700;
+
+    /* ── Inline rest bar (non-blocking, above footer) ── */
+    #restBar {
+      display:none; align-items:center; gap:10px;
+      background:var(--surface2); border:1px solid rgba(79,195,247,0.3);
+      border-radius:12px; padding:8px 10px; margin-bottom:10px;
     }
-    .rest-btn-skip { background:var(--surface2); color:var(--text); }
-    .rest-btn-add  { background:var(--surface2); color:var(--text-muted); }
-    .rest-btn-done { background:var(--blue); color:#000; flex:2; }
-    .rest-duration-row { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:20px; }
-    .rest-dur-btn { background:none; border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:var(--text-muted); font-size:0.8rem; padding:5px 12px; cursor:pointer; }
+    #restBar.visible { display:flex; }
+    .rest-bar-name {
+      flex:1; font-size:0.78rem; color:var(--text-muted);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .rest-bar-count {
+      font-size:1.3rem; font-weight:800; font-variant-numeric:tabular-nums;
+      color:var(--blue); min-width:52px; text-align:center; letter-spacing:-1px;
+    }
+    .rest-bar-count.low  { color:var(--amber); }
+    .rest-bar-count.done { color:var(--green); }
+    .rest-bar-step {
+      background:var(--surface); border:1px solid rgba(255,255,255,0.15); border-radius:8px;
+      color:var(--text-muted); font-size:0.72rem; font-weight:700; padding:6px 8px; cursor:pointer;
+    }
+    .rest-bar-skip {
+      background:var(--blue); border:none; border-radius:8px; color:#000;
+      font-size:0.75rem; font-weight:700; padding:6px 12px; cursor:pointer;
+    }
 
     /* ── Exercise picker ── */
     #exercisePicker {
@@ -393,6 +405,14 @@
   </div>
   <div class="aw-body" id="awBody"></div>
   <div class="aw-footer">
+    <!-- Inline, non-blocking rest bar -->
+    <div id="restBar">
+      <span class="rest-bar-name" id="restBarName">Rest</span>
+      <button class="rest-bar-step" onclick="bumpRest(-15)">−15</button>
+      <span class="rest-bar-count" id="restBarCount">1:00</span>
+      <button class="rest-bar-step" onclick="bumpRest(15)">+15</button>
+      <button class="rest-bar-skip" onclick="skipRest()">Skip</button>
+    </div>
     <button class="add-exercise-btn" id="awAddExBtn">+ Add Exercise</button>
   </div>
 </div>
@@ -401,23 +421,6 @@
 <div id="miniBar" onclick="openActiveWorkout()">
   <span class="mini-title" id="miniTitle">Workout in progress</span>
   <span class="mini-timer" id="miniTimer">0:00</span>
-</div>
-
-<!-- ── Rest timer ── -->
-<div id="restTimer" onclick="handleRestBgClick(event)">
-  <div class="rest-sheet">
-    <div class="rest-label">Rest</div>
-    <div class="rest-count" id="restCount">1:30</div>
-    <div class="rest-duration-row">
-      <button class="rest-dur-btn" onclick="adjustRest(-15)">−15s</button>
-      <span style="font-size:0.75rem;color:var(--text-muted)" id="restTotal">90s</span>
-      <button class="rest-dur-btn" onclick="adjustRest(+15)">+15s</button>
-    </div>
-    <div class="rest-btns">
-      <button class="rest-btn rest-btn-skip" onclick="skipRest()">Skip</button>
-      <button class="rest-btn rest-btn-done" onclick="skipRest()">Done</button>
-    </div>
-  </div>
 </div>
 
 <!-- ── Exercise picker ── -->
