@@ -1,4 +1,4 @@
-const CACHE = 'life-dashboard-v9';
+const CACHE = 'life-dashboard-v10';
 const PRECACHE = [
   '/life-dashboard/',
   '/life-dashboard/index.html',
@@ -38,8 +38,18 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return; // don't intercept Supabase/CDN
 
+  // Bypass the browser HTTP cache so freshly deployed files land immediately,
+  // not after GitHub Pages' ~10-minute max-age expires.
+  const req = new Request(e.request.url, {
+    method: 'GET',
+    headers: e.request.headers,
+    mode: e.request.mode === 'navigate' ? 'same-origin' : e.request.mode,
+    credentials: e.request.credentials,
+    cache: 'no-cache',
+  });
+
   e.respondWith(
-    fetch(e.request)
+    fetch(req)
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
