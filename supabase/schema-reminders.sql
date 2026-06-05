@@ -29,6 +29,9 @@ create table if not exists public.push_subscriptions (
 alter table public.reminders          enable row level security;
 alter table public.push_subscriptions enable row level security;
 
+drop policy if exists "own_reminders"     on public.reminders;
+drop policy if exists "own_subscriptions" on public.push_subscriptions;
+
 create policy "own_reminders" on public.reminders
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
