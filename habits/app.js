@@ -6,7 +6,7 @@ import { enablePush, isPushEnabled, pushSupported, notificationPermission } from
 const { data: { session } } = await supabase.auth.getSession();
 if (!session) { window.location.href = '../'; throw new Error('unauthenticated'); }
 
-const REMINDER_MODEL = 'claude-3-5-haiku-latest';
+const REMINDER_MODEL = 'claude-haiku-4-5-20251001';
 const COLORS = ['#e94560','#4fc3f7','#81c784','#ce93d8','#fbbf24','#f97316','#34d399','#60a5fa'];
 const today  = new Date().toISOString().slice(0, 10);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
