@@ -16,9 +16,19 @@ const gbp = n => '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDig
 // severity weight for sorting: warn first, then tip, then good
 const RANK = { warn: 0, tip: 1, good: 2 };
 
+// Stable key from module + text, so a dismissal sticks until the wording
+// (e.g. an amount or count) actually changes.
+function keyOf(module, text) {
+  let h = 0;
+  const s = module + '|' + text;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return module.toLowerCase() + '-' + Math.abs(h).toString(36);
+}
+
 export async function generateSuggestions() {
   const out = [];
-  const add = (severity, module, icon, text, href) => out.push({ severity, module, icon, text, href });
+  const add = (severity, module, icon, text, href) =>
+    out.push({ severity, module, icon, text, href, key: keyOf(module, text) });
 
   await Promise.allSettled([
     financeSuggestions(add),
@@ -26,9 +36,25 @@ export async function generateSuggestions() {
     habitSuggestions(add),
   ]);
 
-  out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
-  if (out.length === 0) add('good', 'All', '✅', "You're all caught up — nothing needs attention.", null);
-  return out;
+  // Filter out anything the user has dismissed
+  const dismissed = (await db.get('habits', 'suggestions-dismissed')) || [];
+  const visible = out.filter(s => !dismissed.includes(s.key));
+
+  visible.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
+  if (visible.length === 0) {
+    visible.push({ severity:'good', module:'All', icon:'✅',
+      text:"You're all caught up — nothing needs attention.", href:null, key:'all-clear' });
+  }
+  return visible;
+}
+
+// Mark a suggestion dismissed (persists + syncs).
+export async function dismissSuggestion(key) {
+  const dismissed = (await db.get('habits', 'suggestions-dismissed')) || [];
+  if (!dismissed.includes(key)) {
+    dismissed.push(key);
+    await db.set('habits', 'suggestions-dismissed', dismissed);
+  }
 }
 
 // ── Finance ───────────────────────────────────────────────────────────────────

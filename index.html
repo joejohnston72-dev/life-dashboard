@@ -112,6 +112,14 @@
     .sugg-body { flex:1; min-width:0; }
     .sugg-text { font-size:0.85rem; line-height:1.35; }
     .sugg-module { font-size:0.66rem; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-top:3px; }
+    .sugg-x {
+      flex-shrink:0; align-self:center;
+      background:none; border:none; color:var(--text-muted);
+      font-size:0.95rem; cursor:pointer; padding:6px 4px; opacity:0.55;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .sugg-x:active { opacity:1; }
+    .sugg-card[data-href] { cursor:pointer; }
     .sugg-loading { font-size:0.82rem; color:var(--text-muted); padding:6px 0; }
   </style>
 </head>
@@ -189,7 +197,7 @@
 
   <script type="module">
     import { supabase } from './shared/supabase.js';
-    import { generateSuggestions } from './shared/suggestions.js';
+    import { generateSuggestions, dismissSuggestion } from './shared/suggestions.js';
 
     const overlay      = document.getElementById('authOverlay');
     const authForm     = document.getElementById('authForm');
@@ -221,20 +229,45 @@
       list.innerHTML = '<div class="sugg-loading">Checking your apps…</div>';
       try {
         const items = await generateSuggestions();
-        const actionable = items.filter(i => i.severity !== 'good').length;
-        count.textContent = actionable || '✓';
-        count.style.background = actionable ? 'var(--accent)' : '#81c784';
-        list.innerHTML = items.map(i => {
-          const tag = i.href ? 'a' : 'div';
-          const href = i.href ? ` href="${i.href}"` : '';
-          return `<${tag} class="sugg-card ${i.severity}"${href}>
-            <span class="sugg-icon">${i.icon}</span>
-            <div class="sugg-body">
-              <div class="sugg-text">${i.text}</div>
-              <div class="sugg-module">${i.module}</div>
-            </div>
-          </${tag}>`;
-        }).join('');
+        const paint = (arr) => {
+          const actionable = arr.filter(i => i.severity !== 'good').length;
+          count.textContent = actionable || '✓';
+          count.style.background = actionable ? 'var(--accent)' : '#81c784';
+          list.innerHTML = arr.map(i => `
+            <div class="sugg-card ${i.severity}" data-key="${i.key}" ${i.href ? `data-href="${i.href}"` : ''}>
+              <span class="sugg-icon">${i.icon}</span>
+              <div class="sugg-body">
+                <div class="sugg-text">${i.text}</div>
+                <div class="sugg-module">${i.module}</div>
+              </div>
+              ${i.key === 'all-clear' ? '' : `<button class="sugg-x" data-dismiss="${i.key}" aria-label="Dismiss">✕</button>`}
+            </div>`).join('');
+
+          list.querySelectorAll('.sugg-card').forEach(card => {
+            card.addEventListener('click', e => {
+              if (e.target.closest('.sugg-x')) return;
+              if (card.dataset.href) window.location.href = card.dataset.href;
+            });
+          });
+          list.querySelectorAll('.sugg-x').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              await dismissSuggestion(btn.dataset.dismiss);
+              const card = btn.closest('.sugg-card');
+              card.style.transition = 'opacity .15s';
+              card.style.opacity = '0';
+              setTimeout(() => {
+                const remaining = arr.filter(x => x.key !== btn.dataset.dismiss);
+                if (remaining.length === 0) {
+                  paint([{ severity:'good', module:'All', icon:'✅',
+                    text:"You're all caught up — nothing needs attention.", href:null, key:'all-clear' }]);
+                } else {
+                  paint(remaining);
+                }
+              }, 150);
+            });
+          });
+        };
+        paint(items);
       } catch (e) {
         list.innerHTML = '<div class="sugg-loading">Could not load suggestions.</div>';
       }
