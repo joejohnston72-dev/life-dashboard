@@ -204,6 +204,25 @@
     .btn { flex:1;padding:12px;border-radius:10px;font-size:0.95rem;font-weight:600;cursor:pointer;border:none; }
     .btn-primary { background: #81c784; color: #000; }
     .btn-ghost { background: var(--surface2); color: var(--text); }
+
+    /* ── Bank tab ── */
+    .bank-connect-card { background:var(--surface); border-radius:var(--radius); padding:20px 16px; text-align:center; margin-bottom:14px; }
+    .bank-connect-card .bc-icon { font-size:2.2rem; margin-bottom:10px; }
+    .bank-connect-card .bc-title { font-size:1rem; font-weight:700; margin-bottom:6px; }
+    .bank-connect-card .bc-sub { font-size:0.82rem; color:var(--text-muted); line-height:1.5; margin-bottom:16px; }
+    .bank-btn { width:100%; padding:13px; border:none; border-radius:10px; background:#81c784; color:#000; font-size:0.95rem; font-weight:700; cursor:pointer; }
+    .bank-btn.secondary { background:var(--surface2); color:var(--text); }
+    .bank-conn-row { display:flex; align-items:center; gap:12px; background:var(--surface); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
+    .bank-conn-name { flex:1; font-size:0.9rem; font-weight:600; }
+    .bank-conn-status { font-size:0.7rem; padding:2px 8px; border-radius:6px; background:var(--surface2); color:var(--text-muted); }
+    .bank-conn-status.linked { background:rgba(129,199,132,0.15); color:#81c784; }
+    .bank-synced { font-size:0.72rem; color:var(--text-muted); text-align:center; margin:10px 0; }
+    .inst-item { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; }
+    .inst-item:active { opacity:.6; }
+    .inst-logo { width:32px; height:32px; border-radius:8px; object-fit:contain; background:#fff; flex-shrink:0; }
+    .inst-name { font-size:0.9rem; font-weight:600; }
+    .inst-search { width:100%; background:var(--surface2); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:11px 14px; color:var(--text); font-size:1rem; outline:none; margin-bottom:12px; }
+    .inst-list { max-height:55vh; overflow-y:auto; }
   </style>
 </head>
 <body>
@@ -262,6 +281,11 @@
     <div id="accountsList"></div>
   </div>
 
+  <!-- Bank -->
+  <div class="section" id="secBank">
+    <div id="bankBody"></div>
+  </div>
+
   <!-- FAB -->
   <button class="fab" id="fab">+</button>
 
@@ -270,7 +294,8 @@
     <button class="tab active" data-tab="Overview"><span class="tab-icon">📊</span>Overview</button>
     <button class="tab" data-tab="Spend"><span class="tab-icon">💳</span>Spend</button>
     <button class="tab" data-tab="Bills"><span class="tab-icon">📋</span>Bills</button>
-    <button class="tab" data-tab="Worth"><span class="tab-icon">📈</span>Net Worth</button>
+    <button class="tab" data-tab="Worth"><span class="tab-icon">📈</span>Worth</button>
+    <button class="tab" data-tab="Bank"><span class="tab-icon">🏦</span>Bank</button>
   </nav>
 
   <!-- Period modal -->
@@ -392,6 +417,18 @@
       <div class="modal-actions">
         <button class="btn btn-ghost" id="addAccountCancel">Cancel</button>
         <button class="btn btn-primary" id="addAccountSave">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Institution picker modal -->
+  <div class="modal-backdrop" id="instModal">
+    <div class="modal">
+      <p class="modal-title">Choose your bank</p>
+      <input class="inst-search" id="instSearch" placeholder="Search banks…" autocomplete="off">
+      <div class="inst-list" id="instList"><div style="color:var(--text-muted);font-size:0.85rem;padding:20px;text-align:center">Loading banks…</div></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="instCancel">Cancel</button>
       </div>
     </div>
   </div>

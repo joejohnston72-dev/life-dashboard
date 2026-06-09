@@ -264,16 +264,17 @@ async function renderReminders() {
   }
   list.innerHTML = rems.map(r => `
     <div class="rem-card ${r.active ? '' : 'off'}" data-id="${r.id}">
+      <button class="rem-x" data-del="${r.id}" aria-label="Clear reminder">✕</button>
       <div class="rem-top">
         <div class="rem-body">
           <div class="rem-text">${esc(r.text)}</div>
           <div class="rem-sched">⏰ ${esc(r.summary || scheduleSummary(r))}</div>
         </div>
-        <button class="rem-toggle ${r.active ? 'on' : ''}" data-toggle="${r.id}"></button>
       </div>
       <div class="rem-actions">
         <button class="rem-act" data-edit="${r.id}">Edit</button>
-        <button class="rem-act del" data-del="${r.id}">Delete</button>
+        <span style="flex:1"></span>
+        <button class="rem-toggle ${r.active ? 'on' : ''}" data-toggle="${r.id}"></button>
       </div>
     </div>`).join('');
 

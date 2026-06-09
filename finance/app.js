@@ -89,6 +89,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     if (activeTab === 'Bills') renderBills();
     if (activeTab === 'Worth') renderWorth();
     if (activeTab === 'Overview') renderOverview();
+    if (activeTab === 'Bank') renderBank();
   };
 });
 document.getElementById('fab').className = 'fab hidden'; // hidden on overview by default
@@ -445,5 +446,167 @@ function renderAll() {
   if (activeTab === 'Bills')  renderBills();
   if (activeTab === 'Worth')  renderWorth();
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  BANK (GoCardless Bank Account Data)
+// ════════════════════════════════════════════════════════════════════════════
+async function callBank(body) {
+  const { data, error } = await supabase.functions.invoke('bank', { body });
+  if (error) {
+    // surface the function's JSON error message if present
+    let msg = error.message;
+    try { msg = (await error.context.json()).error || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+async function renderBank() {
+  const body = document.getElementById('bankBody');
+  body.innerHTML = `<div class="bank-synced">Loading…</div>`;
+
+  const [{ data: conns }, { data: txs }] = await Promise.all([
+    supabase.from('bank_connections').select('*').order('created_at', { ascending: false }),
+    supabase.from('bank_transactions').select('*').order('date', { ascending: false }).limit(100),
+  ]);
+
+  const linked = (conns || []).filter(c => c.status === 'LN');
+
+  let html = `
+    <div class="bank-connect-card">
+      <div class="bc-icon">🏦</div>
+      <div class="bc-title">${linked.length ? 'Bank connected' : 'Connect your bank'}</div>
+      <div class="bc-sub">${linked.length
+        ? 'Your transactions sync automatically from your bank via Open Banking.'
+        : 'Securely link your bank to import transactions automatically. Free, read-only, via Open Banking.'}</div>
+      <button class="bank-btn" id="bankConnectBtn">${linked.length ? '+ Add another bank' : 'Connect a bank'}</button>
+    </div>`;
+
+  if (conns && conns.length) {
+    html += conns.map(c => `
+      <div class="bank-conn-row">
+        <span class="bank-conn-name">${esc(c.institution_name || c.institution_id || 'Bank')}</span>
+        <span class="bank-conn-status ${c.status === 'LN' ? 'linked' : ''}">${statusLabel(c.status)}</span>
+      </div>`).join('');
+    html += `<button class="bank-btn secondary" id="bankSyncBtn" style="margin-top:8px">↻ Sync now</button>`;
+    html += `<div class="bank-synced" id="bankSyncMsg"></div>`;
+  }
+
+  if (txs && txs.length) {
+    html += `<div class="tx-list-title" style="margin-top:18px">Bank Transactions</div>`;
+    html += txs.map(t => {
+      const out = t.amount < 0;
+      return `
+        <div class="tx-row">
+          <div class="tx-icon ${out ? 'expense' : 'income'}">${out ? '🏦' : '💷'}</div>
+          <div class="tx-info">
+            <div class="tx-cat">${esc(t.description || 'Transaction')}</div>
+            <div class="tx-note">${formatBankDate(t.date)}</div>
+          </div>
+          <div class="tx-amount ${out ? 'expense' : 'income'}">${out ? '-' : '+'}${fmt(Math.abs(t.amount))}</div>
+        </div>`;
+    }).join('');
+  }
+
+  body.innerHTML = html;
+
+  document.getElementById('bankConnectBtn').onclick = openInstitutions;
+  const syncBtn = document.getElementById('bankSyncBtn');
+  if (syncBtn) syncBtn.onclick = doSync;
+}
+
+function statusLabel(s) {
+  return { LN:'Linked', pending:'Pending', CR:'Pending', GC:'Authorising', UA:'Authorising',
+           SA:'Selecting', GA:'Granting', RJ:'Rejected', EX:'Expired' }[s] || s;
+}
+function formatBankDate(iso) {
+  if (!iso) return '';
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+
+async function doSync() {
+  const msg = document.getElementById('bankSyncMsg');
+  if (msg) msg.textContent = 'Syncing…';
+  try {
+    const r = await callBank({ action: 'sync' });
+    if (msg) msg.textContent = `✓ ${r.imported} transactions · ${r.accountsLinked} account(s) linked`;
+    renderBank();
+  } catch (e) {
+    if (msg) msg.textContent = '✗ ' + e.message;
+  }
+}
+
+// ── Institution picker ────────────────────────────────────────────────────────
+let allBanks = [];
+const instModal = document.getElementById('instModal');
+
+async function openInstitutions() {
+  instModal.classList.add('open');
+  const listEl = document.getElementById('instList');
+  document.getElementById('instSearch').value = '';
+  listEl.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;padding:20px;text-align:center">Loading banks…</div>`;
+  try {
+    const r = await callBank({ action: 'institutions' });
+    allBanks = r.banks || [];
+    renderInstList('');
+  } catch (e) {
+    listEl.innerHTML = `<div style="color:#e94560;font-size:0.85rem;padding:20px;text-align:center">${esc(e.message)}</div>`;
+  }
+}
+
+function renderInstList(q) {
+  const listEl = document.getElementById('instList');
+  const filtered = allBanks.filter(b => b.name.toLowerCase().includes(q.toLowerCase()));
+  listEl.innerHTML = filtered.map(b => `
+    <div class="inst-item" data-id="${esc(b.id)}" data-name="${esc(b.name)}">
+      ${b.logo ? `<img class="inst-logo" src="${esc(b.logo)}" alt="">` : '<span class="inst-logo"></span>'}
+      <span class="inst-name">${esc(b.name)}</span>
+    </div>`).join('') || `<div style="color:var(--text-muted);font-size:0.85rem;padding:20px;text-align:center">No banks found.</div>`;
+
+  listEl.querySelectorAll('.inst-item').forEach(item => {
+    item.onclick = () => connectBank(item.dataset.id, item.dataset.name);
+  });
+}
+
+document.getElementById('instSearch').oninput = e => renderInstList(e.target.value);
+document.getElementById('instCancel').onclick = () => instModal.classList.remove('open');
+instModal.addEventListener('click', e => { if (e.target === instModal) instModal.classList.remove('open'); });
+
+async function connectBank(institutionId, name) {
+  const listEl = document.getElementById('instList');
+  listEl.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;padding:20px;text-align:center">Connecting to ${esc(name)}…</div>`;
+  try {
+    sessionStorage.setItem('pendingBankName', name);
+    const r = await callBank({ action: 'connect', institution_id: institutionId });
+    if (r.link) window.location.href = r.link;   // hand off to bank's secure login
+    else throw new Error('No connection link returned.');
+  } catch (e) {
+    listEl.innerHTML = `<div style="color:#e94560;font-size:0.85rem;padding:20px;text-align:center">${esc(e.message)}</div>`;
+  }
+}
+
+// ── Handle return from the bank ───────────────────────────────────────────────
+async function handleBankReturn() {
+  const params = new URLSearchParams(location.search);
+  if (!params.get('bankreturn')) return;
+  // Switch to Bank tab and sync
+  document.querySelector('.tab[data-tab="Bank"]')?.click();
+  history.replaceState({}, '', location.pathname);
+  // Tag the freshly linked connection with its friendly name, then sync
+  const name = sessionStorage.getItem('pendingBankName');
+  if (name) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: conns } = await supabase.from('bank_connections')
+        .select('*').is('institution_name', null).order('created_at', { ascending: false }).limit(1);
+      if (conns && conns[0]) await supabase.from('bank_connections').update({ institution_name: name }).eq('id', conns[0].id);
+    }
+    sessionStorage.removeItem('pendingBankName');
+  }
+  doSync();
+}
+
+handleBankReturn();
 
 boot();
