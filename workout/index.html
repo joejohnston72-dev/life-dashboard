@@ -52,6 +52,13 @@
       font-size:0.72rem; font-weight:700; text-transform:uppercase;
       letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;
     }
+    .routines-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .new-routine-btn {
+      background:rgba(79,195,247,0.12); border:1px solid rgba(79,195,247,0.4); border-radius:8px;
+      color:var(--blue); font-size:0.75rem; font-weight:700; padding:6px 12px; cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .routines-empty { color:var(--text-muted); font-size:0.82rem; line-height:1.5; padding:4px 2px 8px; }
 
     .workout-card {
       background: var(--surface); border-radius: var(--radius);
@@ -358,13 +365,15 @@
   <div class="section active" id="secDashboard">
     <button class="start-btn" id="startEmptyBtn">💪 Start Empty Workout</button>
 
-    <div class="section-heading" id="templatesHeading">Routines</div>
+    <div class="routines-head">
+      <span class="section-heading" style="margin:0">Routines</span>
+      <button class="new-routine-btn" id="newRoutineBtn">+ New Routine</button>
+    </div>
     <div id="templatesList"></div>
+    <div id="routinesEmpty" class="routines-empty" style="display:none">No routines yet — tap <strong>+ New Routine</strong> to build one.</div>
 
     <div class="section-heading" style="margin-top:16px">Recent</div>
     <div id="recentList"></div>
-
-    <div style="text-align:center;color:var(--text-muted);font-size:0.65rem;padding:20px 0 4px;opacity:0.6">build v6 · sound + inline timer</div>
   </div>
 
   <!-- History -->
