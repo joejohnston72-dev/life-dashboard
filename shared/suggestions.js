@@ -11,8 +11,6 @@ const daysSince = iso => {
   const d = new Date((iso.length === 10 ? iso + 'T12:00:00' : iso));
   return isNaN(d) ? Infinity : Math.floor((Date.now() - d.getTime()) / DAY);
 };
-const gbp = n => '£' + Math.abs(n).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-
 // severity weight for sorting: warn first, then tip, then good
 const RANK = { warn: 0, tip: 1, good: 2 };
 
@@ -31,7 +29,6 @@ export async function generateSuggestions() {
     out.push({ severity, module, icon, text, href, key: keyOf(module, text) });
 
   await Promise.allSettled([
-    financeSuggestions(add),
     workoutSuggestions(add),
     habitSuggestions(add),
   ]);
@@ -55,54 +52,6 @@ export async function dismissSuggestion(key) {
     dismissed.push(key);
     await db.set('habits', 'suggestions-dismissed', dismissed);
   }
-}
-
-// ── Finance ───────────────────────────────────────────────────────────────────
-async function financeSuggestions(add) {
-  const [config, bills, accounts, all] = await Promise.all([
-    db.get('finance', 'config'),
-    db.get('finance', 'bills'),
-    db.get('finance', 'accounts'),
-    db.getAll('finance'),
-  ]);
-  if (!config) return;
-
-  const txs = all.filter(r => r.key.startsWith('tx-')).map(r => r.value);
-  const billsList = bills || [];
-  const billsTotal = billsList.reduce((s, b) => s + (b.amount || 0), 0);
-  const spendTotal = config.spendTotal || 0;
-  const income = config.income || 0;
-
-  // Over-allocated budget
-  const unallocated = income - billsTotal - spendTotal;
-  if (unallocated < 0) {
-    add('warn', 'Finance', '💰', `Budget over-allocated by ${gbp(unallocated)} — income doesn't cover bills + spend.`, 'finance/');
-  }
-
-  // Spend budget usage
-  const spent = txs.reduce((s, t) => s + (t.amount || 0), 0);
-  if (spendTotal > 0) {
-    const pct = Math.round((spent / spendTotal) * 100);
-    if (pct >= 100)      add('warn', 'Finance', '💸', `You've spent ${gbp(spent)} — over your ${gbp(spendTotal)} spend budget.`, 'finance/');
-    else if (pct >= 85)  add('warn', 'Finance', '💸', `${pct}% of your spend budget used (${gbp(spent)} of ${gbp(spendTotal)}).`, 'finance/');
-  }
-
-  // Unpaid bills
-  const unpaid = billsList.filter(b => !b.paid);
-  if (unpaid.length) {
-    const owed = unpaid.reduce((s, b) => s + (b.amount || 0), 0);
-    add('tip', 'Finance', '📋', `${unpaid.length} bill${unpaid.length > 1 ? 's' : ''} still unpaid (${gbp(owed)}).`, 'finance/');
-  }
-
-  // No recent activity
-  if (txs.length) {
-    const last = txs.reduce((m, t) => Math.min(m, daysSince(t.date)), Infinity);
-    if (last >= 7) add('tip', 'Finance', '🧾', `No spending logged in ${last} days — keep it current for accuracy.`, 'finance/');
-  }
-
-  // Debt present
-  const debt = (accounts || []).filter(a => a.type === 'debt').reduce((s, a) => s + (a.balance || 0), 0);
-  if (debt > 0) add('tip', 'Finance', '📉', `Outstanding debt of ${gbp(debt)} across your accounts.`, 'finance/');
 }
 
 // ── Workout ───────────────────────────────────────────────────────────────────

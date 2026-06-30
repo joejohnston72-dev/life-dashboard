@@ -96,5 +96,4 @@ body {
 /* Per-module accent borders */
 .tile--calories  { border-top: 3px solid var(--accent); }
 .tile--workout   { border-top: 3px solid #4fc3f7; }
-.tile--finance   { border-top: 3px solid #81c784; }
 .tile--habits    { border-top: 3px solid #ce93d8; }

@@ -1,7 +1,7 @@
 {
   "name": "Life Dashboard",
   "short_name": "Dashboard",
-  "description": "Personal life dashboard — calories, workout, finance, habits",
+  "description": "Personal life dashboard — calories, workout, habits",
   "start_url": "/life-dashboard/",
   "scope": "/life-dashboard/",
   "display": "standalone",

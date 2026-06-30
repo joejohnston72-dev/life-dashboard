@@ -10,7 +10,7 @@ import { supabase } from './supabase.js';
 
 const DB_NAME    = 'life-dashboard';
 const DB_VERSION = 1;
-const STORES     = ['calories', 'workout', 'finance', 'habits'];
+const STORES     = ['calories', 'workout', 'habits'];
 
 // ── IndexedDB ─────────────────────────────────────────────────────────────────
 function open() {
