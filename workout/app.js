@@ -1,6 +1,7 @@
 import { supabase }                     from '../shared/supabase.js';
 import db                               from '../shared/db.js';
 import { EXERCISES, CATEGORIES, CATEGORY_COLORS } from './exercises.js';
+import { CUES } from './cues.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -164,6 +165,7 @@ function renderActiveSession() {
       <div class="ex-block-header">
         <div class="ex-cat-dot" style="background:${color}"></div>
         <div class="ex-name">${esc(ex.name)}</div>
+        <button class="ex-cue-btn" data-cue="${esc(ex.name)}" aria-label="Form cues">ⓘ</button>
         <button class="ex-menu-btn" data-ei="${ei}">⋯</button>
       </div>
       ${ex.prevPerf ? `<div class="ex-prev-note">Previous: ${esc(ex.prevPerf)}</div>` : ''}
@@ -266,6 +268,9 @@ function renderActiveSession() {
     };
   });
 
+  body.querySelectorAll('.ex-cue-btn').forEach(btn => {
+    btn.onclick = () => showCues(btn.dataset.cue);
+  });
   body.querySelectorAll('.ex-menu-btn').forEach(btn => {
     btn.onclick = () => showExMenu(parseInt(btn.dataset.ei));
   });
@@ -842,14 +847,36 @@ async function renderLibrary() {
   el.innerHTML = Object.entries(groups).map(([cat, exs]) => `
     <div class="section-heading" style="margin-top:12px">${cat}</div>
     ${exs.map(e => `
-      <div class="lib-item">
+      <div class="lib-item" data-cue="${esc(e.name)}">
         <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[cat]||'#888'}"></span>
         <span class="lib-name">${esc(e.name)}</span>
+        ${CUES[e.name] ? '<span class="lib-cue-hint">ⓘ form</span>' : ''}
         ${e.custom ? '<span class="lib-custom-badge">Custom</span>' : ''}
       </div>
     `).join('')}
   `).join('');
+
+  el.querySelectorAll('.lib-item').forEach(item => {
+    item.onclick = () => showCues(item.dataset.cue);
+  });
 }
+
+// ── Form cues sheet ───────────────────────────────────────────────────────────
+function showCues(name) {
+  const cues = CUES[name];
+  document.getElementById('cuesTitle').textContent = name;
+  const body = document.getElementById('cuesBody');
+  if (cues && cues.length) {
+    body.innerHTML = cues.map(c => `<li>${esc(c)}</li>`).join('');
+  } else {
+    body.innerHTML = `<li style="list-style:none;color:var(--text-muted);margin-left:-20px">No form cues for this exercise yet.</li>`;
+  }
+  document.getElementById('cuesModal').classList.add('open');
+}
+document.getElementById('cuesClose').onclick = () => document.getElementById('cuesModal').classList.remove('open');
+document.getElementById('cuesModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('cuesModal')) document.getElementById('cuesModal').classList.remove('open');
+});
 document.getElementById('libSearch').oninput = renderLibrary;
 
 // ── Clear history ─────────────────────────────────────────────────────────────
