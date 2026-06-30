@@ -1,6 +1,7 @@
 import { supabase }                     from '../shared/supabase.js';
 import db                               from '../shared/db.js';
 import { EXERCISES, CATEGORIES, CATEGORY_COLORS } from './exercises.js';
+import { CUES } from './cues.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -89,9 +90,16 @@ document.querySelectorAll('.tab').forEach(btn => {
 });
 
 // ── Workout start / open ──────────────────────────────────────────────────────
-document.getElementById('startEmptyBtn').onclick = startEmptyWorkout;
+let routineMode = false;
+
+document.getElementById('startEmptyBtn').onclick = () => startEmptyWorkout();
+document.getElementById('newRoutineBtn').onclick = startNewRoutine;
 
 function startEmptyWorkout(prefill = null) {
+  routineMode = false;
+  document.getElementById('awFinishBtn').textContent = 'Finish';
+  document.getElementById('awTimer').style.display = '';
+  document.getElementById('awTitle').placeholder = 'Workout name…';
   activeSession = {
     id: uid(),
     title: prefill?.title || '',
@@ -111,6 +119,26 @@ function startEmptyWorkout(prefill = null) {
     document.getElementById('miniTimer').textContent = fmtTime(sessionSecs);
   }, 1000);
   openActiveWorkout();
+  renderActiveSession();
+}
+
+// Build a routine from scratch — reuses the workout editor, but Finish saves a template.
+function startNewRoutine(prefill = null) {
+  routineMode = true;
+  activeSession = {
+    id: uid(),
+    title: prefill?.name || '',
+    startTime: new Date().toISOString(),
+    exercises: (prefill?.exercises || []).map(e => ({
+      ...e, id: uid(),
+      sets: (e.sets || [{}]).map(s => ({ ...s, id: uid(), done: false })),
+    })),
+  };
+  sessionSecs = 0;
+  document.getElementById('awTimer').style.display = 'none';   // no timer for routine building
+  document.getElementById('awFinishBtn').textContent = 'Save';
+  openActiveWorkout();
+  document.getElementById('awTitle').placeholder = 'Routine name…';
   renderActiveSession();
 }
 
@@ -137,6 +165,7 @@ function renderActiveSession() {
       <div class="ex-block-header">
         <div class="ex-cat-dot" style="background:${color}"></div>
         <div class="ex-name">${esc(ex.name)}</div>
+        <button class="ex-cue-btn" data-cue="${esc(ex.name)}" aria-label="Form cues">ⓘ</button>
         <button class="ex-menu-btn" data-ei="${ei}">⋯</button>
       </div>
       ${ex.prevPerf ? `<div class="ex-prev-note">Previous: ${esc(ex.prevPerf)}</div>` : ''}
@@ -239,6 +268,9 @@ function renderActiveSession() {
     };
   });
 
+  body.querySelectorAll('.ex-cue-btn').forEach(btn => {
+    btn.onclick = () => showCues(btn.dataset.cue);
+  });
   body.querySelectorAll('.ex-menu-btn').forEach(btn => {
     btn.onclick = () => showExMenu(parseInt(btn.dataset.ei));
   });
@@ -256,6 +288,11 @@ function showExMenu(ei) {
 
 // ── Finish workout ────────────────────────────────────────────────────────────
 document.getElementById('awFinishBtn').onclick = () => {
+  if (routineMode) {
+    if (activeSession.exercises.length === 0) { cancelWorkout(); return; }
+    openSaveTemplateModal();
+    return;
+  }
   if (activeSession.exercises.length === 0) { cancelWorkout(); return; }
   showWorkoutSummary();
 };
@@ -315,8 +352,10 @@ function cancelWorkout() {
   clearInterval(sessionTimer);
   releaseWakeLock();
   skipRest();
+  routineMode = false;
   activeSession = null;
   sessionSecs = 0;
+  document.getElementById('awTimer').style.display = '';
   document.getElementById('workoutSummary').classList.remove('visible');
   document.getElementById('activeWorkout').classList.remove('visible');
   document.getElementById('miniBar').classList.remove('visible');
@@ -525,7 +564,8 @@ document.getElementById('templateNameCancel').onclick = () => document.getElemen
 document.getElementById('awFinishBtn').addEventListener('contextmenu', e => { e.preventDefault(); openSaveTemplateModal(); });
 
 function openSaveTemplateModal() {
-  document.getElementById('templateNameInput').value = activeSession?.title || '';
+  const typed = document.getElementById('awTitle').value.trim();
+  document.getElementById('templateNameInput').value = typed || activeSession?.title || '';
   document.getElementById('templateNameModal').classList.add('open');
 }
 
@@ -542,7 +582,17 @@ document.getElementById('templateNameSave').onclick = async () => {
   });
   await db.set(STORE, 'templates', templates);
   document.getElementById('templateNameModal').classList.remove('open');
-  alert('Saved as routine!');
+
+  if (routineMode) {
+    // Finish the routine builder cleanly and return to the dashboard
+    routineMode = false;
+    activeSession = null;
+    document.getElementById('activeWorkout').classList.remove('visible');
+    document.getElementById('awTimer').style.display = '';
+    renderDashboard();
+  } else {
+    alert('Saved as routine!');
+  }
 };
 
 // ── Dashboard render ──────────────────────────────────────────────────────────
@@ -550,7 +600,7 @@ async function renderDashboard() {
   // Templates
   const templates = await getTemplates();
   const tmplEl = document.getElementById('templatesList');
-  document.getElementById('templatesHeading').style.display = templates.length ? '' : 'none';
+  document.getElementById('routinesEmpty').style.display = templates.length ? 'none' : '';
   tmplEl.innerHTML = templates.map(t => `
     <div class="template-card" data-tid="${t.id}">
       <div>
@@ -797,14 +847,36 @@ async function renderLibrary() {
   el.innerHTML = Object.entries(groups).map(([cat, exs]) => `
     <div class="section-heading" style="margin-top:12px">${cat}</div>
     ${exs.map(e => `
-      <div class="lib-item">
+      <div class="lib-item" data-cue="${esc(e.name)}">
         <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[cat]||'#888'}"></span>
         <span class="lib-name">${esc(e.name)}</span>
+        ${CUES[e.name] ? '<span class="lib-cue-hint">ⓘ form</span>' : ''}
         ${e.custom ? '<span class="lib-custom-badge">Custom</span>' : ''}
       </div>
     `).join('')}
   `).join('');
+
+  el.querySelectorAll('.lib-item').forEach(item => {
+    item.onclick = () => showCues(item.dataset.cue);
+  });
 }
+
+// ── Form cues sheet ───────────────────────────────────────────────────────────
+function showCues(name) {
+  const cues = CUES[name];
+  document.getElementById('cuesTitle').textContent = name;
+  const body = document.getElementById('cuesBody');
+  if (cues && cues.length) {
+    body.innerHTML = cues.map(c => `<li>${esc(c)}</li>`).join('');
+  } else {
+    body.innerHTML = `<li style="list-style:none;color:var(--text-muted);margin-left:-20px">No form cues for this exercise yet.</li>`;
+  }
+  document.getElementById('cuesModal').classList.add('open');
+}
+document.getElementById('cuesClose').onclick = () => document.getElementById('cuesModal').classList.remove('open');
+document.getElementById('cuesModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('cuesModal')) document.getElementById('cuesModal').classList.remove('open');
+});
 document.getElementById('libSearch').oninput = renderLibrary;
 
 // ── Clear history ─────────────────────────────────────────────────────────────
