@@ -3,6 +3,7 @@ import db                               from '../shared/db.js';
 import { EXERCISES, CATEGORIES, CATEGORY_COLORS } from './exercises.js';
 import { CUES } from './cues.js';
 import { ROUTINE_LIBRARY } from './routineLibrary.js';
+import { MY_ROUTINES } from './myRoutines.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -561,6 +562,21 @@ document.getElementById('customExSave').onclick = async () => {
 // ── Templates ─────────────────────────────────────────────────────────────────
 async function getTemplates() { return (await db.get(STORE, 'templates')) || []; }
 
+// One-time import of the user's real routine (from Hevy), guarded so it only
+// ever runs once per account regardless of how many devices open the app.
+async function seedMyRoutinesOnce() {
+  const done = await db.get(STORE, 'my-routines-seeded');
+  if (done) return;
+  const templates = await getTemplates();
+  const existingNames = new Set(templates.map(t => t.name));
+  for (const day of MY_ROUTINES) {
+    if (existingNames.has(day.name)) continue;
+    templates.push({ id: uid(), name: day.name, exercises: day.exercises });
+  }
+  await db.set(STORE, 'templates', templates);
+  await db.set(STORE, 'my-routines-seeded', true);
+}
+
 document.getElementById('templateNameCancel').onclick = () => document.getElementById('templateNameModal').classList.remove('open');
 document.getElementById('awFinishBtn').addEventListener('contextmenu', e => { e.preventDefault(); openSaveTemplateModal(); });
 
@@ -1118,6 +1134,7 @@ function parseCommaCSV(text) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+await seedMyRoutinesOnce();
 renderDashboard();
 // Pre-populate history state so Build Routines button shows correctly
 renderHistory();
