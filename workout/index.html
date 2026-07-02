@@ -263,6 +263,27 @@
       background:none; color:var(--text-muted); font-size:0.85rem; cursor:pointer;
     }
 
+    /* ── Routine library ── */
+    #routineLibrary, #libraryDetail {
+      position:fixed; inset:0; z-index:65; background:var(--bg);
+      transform:translateX(100%); transition:transform .25s ease;
+      overflow-y:auto;
+    }
+    #routineLibrary.visible, #libraryDetail.visible { transform:translateX(0); }
+    .split-card {
+      background:var(--surface); border-radius:var(--radius); border-left:4px solid var(--blue);
+      padding:15px; margin-bottom:10px; cursor:pointer; -webkit-tap-highlight-color:transparent;
+    }
+    .split-card:active { background:var(--surface2); }
+    .split-name { font-size:0.98rem; font-weight:700; margin-bottom:4px; }
+    .split-tagline { font-size:0.8rem; color:var(--text-muted); line-height:1.4; margin-bottom:8px; }
+    .split-meta { font-size:0.72rem; color:var(--blue); font-weight:700; }
+    .lib-detail-tagline { font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin:0 0 16px; }
+    .lib-day-card { background:var(--surface); border-radius:14px; padding:14px; margin-bottom:10px; }
+    .lib-day-name { font-size:0.9rem; font-weight:700; margin-bottom:8px; }
+    .lib-day-ex { display:flex; justify-content:space-between; gap:10px; font-size:0.82rem; padding:4px 0; color:var(--text-muted); }
+    .lib-day-ex-name { color:var(--text); }
+
     /* ── Workout summary modal ── */
     #workoutSummary {
       position:fixed; inset:0; z-index:70; background:rgba(0,0,0,0.7);
@@ -376,10 +397,13 @@
 
     <div class="routines-head">
       <span class="section-heading" style="margin:0">Routines</span>
-      <button class="new-routine-btn" id="newRoutineBtn">+ New Routine</button>
+      <div style="display:flex; gap:8px">
+        <button class="new-routine-btn" id="libraryBtn">📚 Library</button>
+        <button class="new-routine-btn" id="newRoutineBtn">+ New Routine</button>
+      </div>
     </div>
     <div id="templatesList"></div>
-    <div id="routinesEmpty" class="routines-empty" style="display:none">No routines yet — tap <strong>+ New Routine</strong> to build one.</div>
+    <div id="routinesEmpty" class="routines-empty" style="display:none">No routines yet — tap <strong>📚 Library</strong> for ready-made splits, or <strong>+ New Routine</strong> to build your own.</div>
 
     <div class="section-heading" style="margin-top:16px">Recent</div>
     <div id="recentList"></div>
@@ -451,6 +475,29 @@
   </div>
   <div class="ep-filters" id="epFilters"></div>
   <div class="ep-list" id="epList"></div>
+</div>
+
+<!-- ── Routine library ── -->
+<div id="routineLibrary">
+  <div class="page-header">
+    <button class="back-btn" id="libraryClose">←</button>
+    <h1 class="page-title">Routine Library</h1>
+  </div>
+  <div id="libraryList" style="padding:0 var(--gap)"></div>
+</div>
+
+<!-- ── Routine library: split detail ── -->
+<div id="libraryDetail">
+  <div class="page-header">
+    <button class="back-btn" id="libraryDetailBack">←</button>
+    <h1 class="page-title" id="libraryDetailTitle"></h1>
+  </div>
+  <div style="padding:0 var(--gap)">
+    <p class="lib-detail-tagline" id="libraryDetailTagline"></p>
+    <div id="libraryDetailDays"></div>
+    <button class="start-btn" id="libraryAddBtn" style="margin-top:8px">+ Add this split to my routines</button>
+    <div style="height:20px"></div>
+  </div>
 </div>
 
 <!-- ── Workout summary ── -->

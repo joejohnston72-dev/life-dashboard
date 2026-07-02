@@ -2,6 +2,7 @@ import { supabase }                     from '../shared/supabase.js';
 import db                               from '../shared/db.js';
 import { EXERCISES, CATEGORIES, CATEGORY_COLORS } from './exercises.js';
 import { CUES } from './cues.js';
+import { ROUTINE_LIBRARY } from './routineLibrary.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -593,6 +594,77 @@ document.getElementById('templateNameSave').onclick = async () => {
   } else {
     alert('Saved as routine!');
   }
+};
+
+// ── Routine library (pre-built, science-backed splits) ────────────────────────
+const libraryEl       = document.getElementById('routineLibrary');
+const libraryDetailEl = document.getElementById('libraryDetail');
+let openSplitId = null;
+
+document.getElementById('libraryBtn').onclick = () => {
+  renderLibraryList();
+  libraryEl.classList.add('visible');
+};
+document.getElementById('libraryClose').onclick = () => libraryEl.classList.remove('visible');
+document.getElementById('libraryDetailBack').onclick = () => libraryDetailEl.classList.remove('visible');
+
+function renderLibraryList() {
+  document.getElementById('libraryList').innerHTML = ROUTINE_LIBRARY.map(split => `
+    <div class="split-card" data-split="${split.id}">
+      <div class="split-name">${esc(split.name)}</div>
+      <div class="split-tagline">${esc(split.tagline)}</div>
+      <div class="split-meta">${esc(split.meta)}</div>
+    </div>
+  `).join('');
+  document.querySelectorAll('.split-card').forEach(card => {
+    card.onclick = () => openSplitDetail(card.dataset.split);
+  });
+}
+
+function openSplitDetail(splitId) {
+  const split = ROUTINE_LIBRARY.find(s => s.id === splitId);
+  if (!split) return;
+  openSplitId = splitId;
+  document.getElementById('libraryDetailTitle').textContent = split.name;
+  document.getElementById('libraryDetailTagline').textContent = `${split.meta} — ${split.tagline}`;
+  document.getElementById('libraryDetailDays').innerHTML = split.days.map(day => `
+    <div class="lib-day-card">
+      <div class="lib-day-name">${esc(day.name)}</div>
+      ${day.exercises.map(e => `
+        <div class="lib-day-ex">
+          <span class="lib-day-ex-name">${esc(e.name)}</span>
+          <span>${e.sets.length}×${e.sets[0].reps}</span>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+  libraryDetailEl.classList.add('visible');
+}
+
+document.getElementById('libraryAddBtn').onclick = async () => {
+  const split = ROUTINE_LIBRARY.find(s => s.id === openSplitId);
+  if (!split) return;
+  const templates = await getTemplates();
+  const existingNames = new Set(templates.map(t => t.name));
+  let added = 0;
+  for (const day of split.days) {
+    if (existingNames.has(day.name)) continue; // skip if already imported
+    templates.push({
+      id: uid(), name: day.name,
+      exercises: day.exercises.map(e => ({
+        name: e.name, category: e.category, restTime: e.restTime,
+        sets: e.sets.map(s => ({ weight: s.weight, reps: s.reps, type: s.type })),
+      })),
+    });
+    added++;
+  }
+  await db.set(STORE, 'templates', templates);
+  libraryDetailEl.classList.remove('visible');
+  libraryEl.classList.remove('visible');
+  renderDashboard();
+  alert(added > 0
+    ? `Added ${added} routine${added > 1 ? 's' : ''} from "${split.name}" — find them on your dashboard.`
+    : `"${split.name}" is already in your routines.`);
 };
 
 // ── Dashboard render ──────────────────────────────────────────────────────────
