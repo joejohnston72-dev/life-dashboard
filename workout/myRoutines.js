@@ -1,7 +1,7 @@
 // User's actual current routine, imported from Hevy (5-day split:
 // Upper Strength / Lower Strength / Push Hypertrophy / Pull Hypertrophy / Legs Hypertrophy).
-// One-time seeded into the templates store on first load after this ships —
-// see MY_ROUTINES_FLAG handling in app.js.
+// One-time seeded into the templates store on first load — see
+// seedMyRoutinesOnce() / fixIncompletePushDayOnce() in app.js.
 //
 // Rep targets use the LOW end of each Hevy rep range (double-progression: work
 // up through the range on the same weight before increasing load).
@@ -46,16 +46,17 @@ export const MY_ROUTINES = [
     ],
   },
   {
-    // PARTIAL — only the tail end of this day was visible in the screenshots.
-    // Exercises before "Cross Body Tricep Extension" (likely chest/shoulder
-    // presses and raises, matching the "Delts" focus) are missing. Edit this
-    // routine in-app to add them once you've got the full list.
-    name: 'Push Hypertrophy (Delts) [INCOMPLETE — add missing exercises]',
+    name: 'Push Hypertrophy (Delts)',
     exercises: [
-      ex('Cross Body Tricep Extension', 'Triceps', 60, [12,12,12]),
-      ex('Chest Fly (Machine)',         'Chest',   30, [10,10,10]),
-      ex('Hanging Leg Raise',           'Core',    75, [10,10,10]),
-      ex('Cardio - 25min Stairs/Cycle', 'Cardio',  75, [25]),
+      ex('Chest Press (Machine)',            'Chest',    60, [8,8,8,8]),
+      ex('Dumbbell Squeeze Press',           'Chest',    60, [8,8,8]),
+      ex('Lateral Raise (Cable)',            'Shoulders',60, [13,13,13,13]),
+      ex('Overhead Triceps Extension (Cable)','Triceps', 60, [10,10,10,10]),
+      ex('Triceps Dip',                      'Triceps',  60, [7,7,7]),
+      ex('Cross Body Tricep Extension',      'Triceps',  60, [12,12,12]),
+      ex('Chest Fly (Machine)',              'Chest',    30, [10,10,10]),
+      ex('Hanging Leg Raise',                'Core',     75, [10,10,10]),
+      ex('Cardio - 25min Stairs/Cycle',      'Cardio',   75, [25]),
     ],
   },
   {

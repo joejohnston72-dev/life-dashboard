@@ -577,6 +577,24 @@ async function seedMyRoutinesOnce() {
   await db.set(STORE, 'my-routines-seeded', true);
 }
 
+// One-time fix-up: the first import of "Push Hypertrophy (Delts)" only had
+// the tail of that day (screenshots arrived in two batches). This replaces
+// the flagged-incomplete version with the completed one, if still present
+// under its original name.
+async function fixIncompletePushDayOnce() {
+  const done = await db.get(STORE, 'push-day-fixed');
+  if (done) return;
+  const OLD_NAME = 'Push Hypertrophy (Delts) [INCOMPLETE — add missing exercises]';
+  const templates = await getTemplates();
+  const idx = templates.findIndex(t => t.name === OLD_NAME);
+  const complete = MY_ROUTINES.find(d => d.name === 'Push Hypertrophy (Delts)');
+  if (idx !== -1 && complete) {
+    templates[idx] = { ...templates[idx], name: complete.name, exercises: complete.exercises };
+    await db.set(STORE, 'templates', templates);
+  }
+  await db.set(STORE, 'push-day-fixed', true);
+}
+
 document.getElementById('templateNameCancel').onclick = () => document.getElementById('templateNameModal').classList.remove('open');
 document.getElementById('awFinishBtn').addEventListener('contextmenu', e => { e.preventDefault(); openSaveTemplateModal(); });
 
@@ -1135,6 +1153,7 @@ function parseCommaCSV(text) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 await seedMyRoutinesOnce();
+await fixIncompletePushDayOnce();
 renderDashboard();
 // Pre-populate history state so Build Routines button shows correctly
 renderHistory();
