@@ -28,7 +28,7 @@ body {
 
 /* Header */
 .header {
-  padding: 24px var(--gap) 8px;
+  padding: calc(env(safe-area-inset-top) + 20px) var(--gap) 8px;
 }
 
 .header__title {
