@@ -340,5 +340,19 @@ document.getElementById('remEditSave').onclick = async () => {
   } catch (e) { alert(e.message); }
 };
 
+// ── Standalone-app chrome: no browser history to go "back" to ─────────────────
+(function fixChrome() {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const homeBtn = document.getElementById('homeBtn');
+  if (!homeBtn) return;
+  if (standalone) {
+    homeBtn.textContent = '⌂';
+    homeBtn.onclick = () => { location.href = '../'; };
+    homeBtn.title = 'Dashboard hub';
+  } else {
+    homeBtn.onclick = () => history.back();
+  }
+})();
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 renderHabits();

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Workout</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0f0f1a">
@@ -12,8 +12,12 @@
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="stylesheet" href="../styles.css">
   <style>
-    :root { --blue: #4fc3f7; --green: #34d399; --red: #e94560; --amber: #fbbf24; }
+    :root { --blue: #4fc3f7; --green: #34d399; --red: #e94560; --amber: #fbbf24; --purple: #ce93d8; }
     body { padding-bottom: calc(env(safe-area-inset-bottom) + 60px); overscroll-behavior: none; }
+    /* Kill double-tap zoom + 300ms tap delay app-wide */
+    html, body, button, input, select { touch-action: manipulation; }
+    /* Inputs must be >=16px or iOS auto-zooms on focus */
+    input, select, textarea { font-size: 16px; }
 
     /* ── Shared layout ── */
     .page-header {
@@ -127,6 +131,7 @@
     .ex-block { margin-bottom:20px; }
     .ex-block-header {
       display:flex; align-items:center; gap:8px; margin-bottom:10px;
+      -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
     }
     .ex-cat-dot {
       width:8px; height:8px; border-radius:50%; flex-shrink:0;
@@ -141,7 +146,7 @@
     .ex-prev-note { font-size:0.72rem; color:var(--text-muted); margin-bottom:8px; padding-left:16px; }
     .ex-notes-input {
       width:100%; background:var(--surface2); border:none; border-radius:8px;
-      padding:8px 10px; color:var(--text-muted); font-size:0.8rem; outline:none; margin-bottom:8px;
+      padding:8px 10px; color:var(--text-muted); font-size:16px; outline:none; margin-bottom:8px;
     }
 
     /* ── Sets table ── */
@@ -157,12 +162,13 @@
     .set-prev { font-size:0.7rem; color:var(--text-muted); text-align:center; white-space:nowrap; }
     .set-input {
       background:var(--surface); border:1px solid rgba(255,255,255,0.08); border-radius:8px;
-      padding:8px 4px; color:var(--text); font-size:0.95rem; width:100%; text-align:center; outline:none;
+      padding:8px 4px; color:var(--text); font-size:16px; width:100%; text-align:center; outline:none;
       -moz-appearance:textfield;
     }
     .set-input::-webkit-outer-spin-button,
     .set-input::-webkit-inner-spin-button { -webkit-appearance:none; }
     .set-input:focus { border-color:var(--blue); }
+    .set-input::placeholder { color:rgba(255,255,255,0.28); }
     .set-row.done .set-input { background:rgba(79,195,247,0.1); border-color:rgba(79,195,247,0.3); }
     .set-check {
       width:34px; height:34px; border-radius:50%; border:2px solid rgba(255,255,255,0.2);
@@ -171,7 +177,33 @@
       transition:background .15s, border-color .15s;
     }
     .set-row.done .set-check { background:var(--blue); border-color:var(--blue); }
+    .set-check.as-delete { background:var(--red); border-color:var(--red); color:#fff; font-weight:700; }
     .set-warmup .set-num::after { content:' W'; color:var(--amber); }
+    .set-dropset .set-num::after { content:' D'; color:var(--purple); font-weight:700; }
+
+    /* Swipe mechanics: rows follow the finger horizontally, scroll stays vertical */
+    .set-row { touch-action: pan-y; }
+    .set-row.snapping { transition: transform .16s ease; }
+    .set-row.pb .set-num::before { content:'🏆 '; font-size:0.6rem; }
+    .set-row.warn .set-input[data-field="weight"] { border-color:var(--amber); }
+    .set-warn-row td {
+      font-size:0.7rem; color:var(--amber); padding:2px 2px 6px; text-align:left;
+    }
+
+    /* Reorder mode */
+    .reorder-hint { font-size:0.8rem; color:var(--text-muted); text-align:center; padding:14px 0 10px; }
+    .reorder-card {
+      display:flex; align-items:center; gap:12px;
+      background:var(--surface); border-radius:12px; padding:15px 14px; margin-bottom:8px;
+      touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    }
+    .reorder-card.dragging { opacity:0.85; box-shadow:0 6px 20px rgba(0,0,0,0.5); position:relative; z-index:5; }
+    .reorder-name { flex:1; font-size:0.95rem; font-weight:700; }
+    .reorder-grip { color:var(--text-muted); font-size:1rem; }
+    .reorder-done {
+      width:100%; padding:14px; margin-top:8px; border:none; border-radius:12px;
+      background:var(--blue); color:#000; font-size:0.95rem; font-weight:700; cursor:pointer;
+    }
     .add-set-row td { padding-top:6px; }
     .add-set-mini {
       background:none; border:1px dashed rgba(255,255,255,0.12); border-radius:8px;
@@ -197,28 +229,40 @@
 
     /* ── Inline rest bar (non-blocking, above footer) ── */
     #restBar {
-      display:none; align-items:center; gap:10px;
-      background:var(--surface2); border:1px solid rgba(79,195,247,0.3);
-      border-radius:12px; padding:8px 10px; margin-bottom:10px;
+      display:none; position:relative; overflow:hidden;
+      align-items:center; gap:10px;
+      background:var(--surface2); border:1px solid rgba(79,195,247,0.45);
+      border-radius:14px; padding:14px 12px; margin-bottom:10px;
     }
     #restBar.visible { display:flex; }
+    #restBarFill {
+      position:absolute; inset:0 auto 0 0; width:100%;
+      background:rgba(79,195,247,0.14); pointer-events:none;
+      transition:width .25s linear;
+    }
+    #restBar.flash { animation: restFlash .5s ease 3; }
+    @keyframes restFlash {
+      0%,100% { border-color: rgba(79,195,247,0.45); }
+      50%     { border-color: var(--green); box-shadow: 0 0 18px rgba(52,211,153,0.5); }
+    }
+    #restBar > * { position:relative; }
     .rest-bar-name {
-      flex:1; font-size:0.78rem; color:var(--text-muted);
+      flex:1; font-size:0.8rem; color:var(--text-muted);
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
     .rest-bar-count {
-      font-size:1.3rem; font-weight:800; font-variant-numeric:tabular-nums;
-      color:var(--blue); min-width:52px; text-align:center; letter-spacing:-1px;
+      font-size:2rem; font-weight:800; font-variant-numeric:tabular-nums;
+      color:var(--blue); min-width:76px; text-align:center; letter-spacing:-1.5px;
     }
     .rest-bar-count.low  { color:var(--amber); }
     .rest-bar-count.done { color:var(--green); }
     .rest-bar-step {
       background:var(--surface); border:1px solid rgba(255,255,255,0.15); border-radius:8px;
-      color:var(--text-muted); font-size:0.72rem; font-weight:700; padding:6px 8px; cursor:pointer;
+      color:var(--text); font-size:0.78rem; font-weight:700; padding:9px 10px; cursor:pointer;
     }
     .rest-bar-skip {
       background:var(--blue); border:none; border-radius:8px; color:#000;
-      font-size:0.75rem; font-weight:700; padding:6px 12px; cursor:pointer;
+      font-size:0.8rem; font-weight:700; padding:9px 14px; cursor:pointer;
     }
 
     /* ── Exercise picker ── */
@@ -262,6 +306,78 @@
       width:100%; padding:12px; border-radius:10px; border:1px dashed rgba(255,255,255,0.15);
       background:none; color:var(--text-muted); font-size:0.85rem; cursor:pointer;
     }
+    .ep-often-head {
+      font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--blue); padding:10px 0 4px;
+    }
+    .ep-often-sep { height:1px; background:rgba(79,195,247,0.25); margin:8px 0 4px; }
+
+    /* ── Streak chip ── */
+    #streakChip {
+      display:flex; align-items:center; justify-content:center; gap:6px;
+      background:var(--surface); border:1px solid rgba(251,191,36,0.25); border-radius:12px;
+      color:var(--text); font-size:0.85rem; padding:10px 14px; margin-bottom:14px;
+      cursor:pointer; -webkit-tap-highlight-color:transparent; width:100%;
+    }
+    #streakChip strong { color:var(--amber); }
+
+    /* ── PB toast ── */
+    #pbToast {
+      position:fixed; top:calc(env(safe-area-inset-top) + 12px); left:12px; right:12px;
+      background:linear-gradient(135deg, #3a2f0a, #1d1a0a);
+      border:1px solid rgba(251,191,36,0.55); border-radius:14px;
+      color:var(--text); font-size:0.9rem; padding:14px 16px; z-index:120;
+      opacity:0; transform:translateY(-16px); pointer-events:none;
+      transition:opacity .25s, transform .25s;
+      box-shadow:0 8px 24px rgba(0,0,0,0.5);
+    }
+    #pbToast.visible { opacity:1; transform:translateY(0); }
+
+    /* ── Exercise action sheet ── */
+    .sheet-btn {
+      display:block; width:100%; padding:15px; margin-bottom:8px;
+      border:none; border-radius:12px; background:var(--surface2); color:var(--text);
+      font-size:0.95rem; font-weight:600; cursor:pointer; text-align:left;
+    }
+    .sheet-btn.danger { color:var(--red); }
+
+    /* ── Stats ── */
+    .stats-totals { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+    .stats-totals .stat-box { min-width:calc(33% - 8px); background:var(--surface); }
+    .stats-card {
+      background:var(--surface); border-radius:var(--radius); padding:14px; margin-bottom:12px;
+    }
+    .stats-card-title { font-size:0.85rem; font-weight:700; margin-bottom:12px; }
+    .stats-card-sub { font-size:0.7rem; font-weight:600; color:var(--text-muted); margin-left:6px; }
+    .stats-legend { display:flex; gap:16px; font-size:0.7rem; color:var(--text-muted); margin-top:8px; }
+    .stats-legend i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+    .stats-empty { font-size:0.82rem; color:var(--text-muted); padding:10px 0; }
+    .milestone-wrap { display:flex; flex-wrap:wrap; gap:6px; }
+    .milestone-chip {
+      font-size:0.72rem; font-weight:600; background:var(--surface2);
+      border:1px solid rgba(251,191,36,0.25); border-radius:8px; padding:4px 9px;
+    }
+    .mb-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .mb-cat { font-size:0.75rem; width:82px; flex-shrink:0; }
+    .mb-track { flex:1; height:10px; background:rgba(255,255,255,0.06); border-radius:5px; position:relative; overflow:hidden; }
+    .mb-band { position:absolute; top:0; bottom:0; background:rgba(255,255,255,0.09); }
+    .mb-fill { position:absolute; top:0; bottom:0; left:0; border-radius:5px; opacity:0.9; }
+    .mb-fill.mb-low { opacity:0.45; }
+    .mb-val { font-size:0.72rem; color:var(--text-muted); width:32px; text-align:right; font-variant-numeric:tabular-nums; }
+
+    /* ── PB decorations ── */
+    .wc-pb { font-size:0.72rem; color:var(--amber); font-weight:700; }
+    .hd-pb-list {
+      background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.25);
+      border-radius:12px; padding:10px 14px; margin-bottom:14px;
+      font-size:0.8rem; line-height:1.7;
+    }
+    .summary-warn-box {
+      background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.35);
+      border-radius:12px; padding:10px 14px; margin-bottom:16px;
+      font-size:0.8rem; line-height:1.6; color:var(--text);
+    }
+    .summary-warn-box span { color:var(--text-muted); font-size:0.72rem; }
 
     /* ── Routine library ── */
     #routineLibrary, #libraryDetail {
@@ -387,13 +503,14 @@
 <!-- ── Main app ── -->
 <div id="mainApp">
   <div class="page-header">
-    <button class="back-btn" onclick="history.back()">←</button>
+    <button class="back-btn" id="homeBtn">←</button>
     <h1 class="page-title" id="mainTitle">Workout</h1>
   </div>
 
   <!-- Dashboard -->
   <div class="section active" id="secDashboard">
     <button class="start-btn" id="startEmptyBtn">💪 Start Empty Workout</button>
+    <button id="streakChip" title="Streak settings"></button>
 
     <div class="routines-head">
       <span class="section-heading" style="margin:0">Routines</span>
@@ -430,11 +547,17 @@
     <div style="margin-bottom:12px">
       <input class="form-input" id="libSearch" placeholder="Search exercises…" style="margin-bottom:10px">
     </div>
-    <div id="libraryList"></div>
+    <div id="libraryList2"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="section" id="secStats">
+    <div id="statsBody"></div>
   </div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="Dashboard"><span class="ti">🏠</span>Home</button>
+    <button class="tab" data-tab="Stats"><span class="ti">📈</span>Stats</button>
     <button class="tab" data-tab="History"><span class="ti">📋</span>History</button>
     <button class="tab" data-tab="Library"><span class="ti">📚</span>Library</button>
   </nav>
@@ -451,6 +574,7 @@
   <div class="aw-footer">
     <!-- Inline, non-blocking rest bar -->
     <div id="restBar">
+      <div id="restBarFill"></div>
       <span class="rest-bar-name" id="restBarName">Rest</span>
       <button class="rest-bar-step" onclick="bumpRest(-15)">−15</button>
       <span class="rest-bar-count" id="restBarCount">1:00</span>
@@ -506,6 +630,7 @@
     <div class="summary-title" id="summaryTitle"></div>
     <div class="summary-date"  id="summaryDate"></div>
     <div class="summary-stats" id="summaryStats"></div>
+    <div id="summaryWarnings"></div>
     <div class="summary-ex"    id="summaryExercises"></div>
     <div class="summary-btns">
       <button class="summary-btn summary-btn-discard" id="discardBtn">Discard</button>
@@ -551,6 +676,39 @@
     <ul id="cuesBody" style="margin:0 0 4px 20px;padding:0;font-size:0.92rem;line-height:1.6;color:var(--text)"></ul>
     <div class="modal-btns" style="margin-top:18px">
       <button class="btn btn-p" id="cuesClose">Got it</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── PB toast ── -->
+<div id="pbToast"></div>
+
+<!-- ── Exercise action sheet ── -->
+<div class="modal-backdrop" id="exMenuSheet">
+  <div class="modal">
+    <p class="modal-title" id="exMenuTitle"></p>
+    <button class="sheet-btn" id="exMenuReplace">🔁 Replace exercise…</button>
+    <button class="sheet-btn" id="exMenuReorder">↕️ Reorder exercises</button>
+    <button class="sheet-btn danger" id="exMenuRemove">🗑 Remove from workout</button>
+    <button class="sheet-btn" id="exMenuCancel" style="text-align:center;background:none;color:var(--text-muted)">Cancel</button>
+  </div>
+</div>
+
+<!-- ── Streak settings modal ── -->
+<div class="modal-backdrop" id="streakModal">
+  <div class="modal">
+    <p class="modal-title">🔥 Weekly Streak</p>
+    <div class="form-group">
+      <label class="form-label">Workouts per week to keep the streak</label>
+      <input class="form-input" id="streakTargetInput" type="number" min="1" max="7" inputmode="numeric">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Starting streak (carry over your Hevy streak, in weeks)</label>
+      <input class="form-input" id="streakSeedInput" type="number" min="0" inputmode="numeric" placeholder="e.g. 48">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-g" id="streakCancel">Cancel</button>
+      <button class="btn btn-p" id="streakSave">Save</button>
     </div>
   </div>
 </div>

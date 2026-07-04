@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Habits</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0f0f1a">
@@ -14,6 +14,8 @@
   <style>
     :root { --purple:#ce93d8; }
     body { padding-bottom: calc(env(safe-area-inset-bottom) + 80px); }
+    html, body, button, input, select, textarea { touch-action: manipulation; }
+    input, select, textarea { font-size: 16px; }
 
     .page-header { display:flex; align-items:center; gap:12px; padding:calc(env(safe-area-inset-top) + 16px) var(--gap) 8px; }
     .back-btn { background:none;border:none;color:var(--text);font-size:1.4rem;cursor:pointer;padding:4px;line-height:1; }
@@ -100,7 +102,7 @@
 </head>
 <body>
   <div class="page-header">
-    <button class="back-btn" onclick="history.back()">←</button>
+    <button class="back-btn" id="homeBtn">←</button>
     <h1 class="page-title">Habits</h1>
     <button class="back-btn" id="keyBtn" title="API key" style="font-size:1.1rem">🔑</button>
   </div>

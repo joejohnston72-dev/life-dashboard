@@ -114,6 +114,18 @@ export const CUES = {
   'Dragon Flag': ['Grip behind the head, body rigid','Lower the straight body slowly','Keep the core braced — no sagging hips'],
   'Pallof Press': ['Anti-rotation — resist the cable’s pull','Press straight out and back, hips square','Brace the core throughout'],
 
+  // ── User's Hevy movements not covered above ──
+  'Incline Bench Press (Smith Machine)': ['Set bench to 30–45° and position it so the bar meets the upper chest','Shoulder blades retracted and pinned; grip just outside shoulders','Fixed path — control the negative and don’t bounce off the chest'],
+  'Chest Supported Incline Row (Dumbbell)': ['Chest glued to the incline pad — no torso momentum','Row the elbows up and back, squeezing the shoulder blades','Full stretch at the bottom without dropping the shoulders'],
+  'Close Grip Palms Up Pulldown': ['Underhand grip ~shoulder width, slight lean back','Pull to the upper chest, driving the elbows to your sides','Squeeze lats and biceps; control the stretch on the way up'],
+  'Dumbbell Squeeze Press': ['Press the dumbbells together hard for the whole set','Lower to the chest keeping constant inward pressure','Squeeze the chest to press up — constant tension move'],
+  'Cross Body Tricep Extension': ['Lie back, take the dumbbell across toward the opposite shoulder','Upper arm stays vertical and still — only the elbow moves','Extend fully and control the stretch at the bottom'],
+  'Hip Thrust Elite (Machine)': ['Pad across the hips, shoulders set against the support','Drive through the heels to full hip extension','Squeeze glutes at the top; ribs down — don’t arch the lower back'],
+  'Back Extension (Weighted Hyperextension)': ['Pad at the hip crease so the hips can hinge freely','Lower with a controlled hinge, slight round is fine','Squeeze glutes and hamstrings to rise — stop at neutral, don’t hyperextend'],
+  'Calf Extension (Machine)': ['Balls of the feet on the platform, heels free','Full stretch at the bottom — pause briefly','Press to a high squeeze; no bouncing between reps'],
+  'Crunch (Machine)': ['Set the pads at chest height, hips stay planted','Crunch by flexing the spine, not pulling with the arms','Slow return — keep tension on the abs'],
+  'Cardio - 25min Stairs/Cycle': ['Steady conversational pace — zone 2 effort','Stairs: whole foot on the step, no leaning on rails','Bike: saddle height so the knee stays slightly bent'],
+
   // ── Cardio ──
   'Running (Treadmill)': ['Run tall, slight forward lean from the ankles','Land under your body, quick cadence','Relaxed shoulders and arms'],
   'Cycling (Stationary)': ['Set saddle so the knee is slightly bent at the bottom','Smooth, round pedal stroke','Keep the core engaged, shoulders relaxed'],
@@ -123,3 +135,67 @@ export const CUES = {
   'Ski Erg': ['Hinge at the hips, engage the lats','Pull down and through, finish at the hips','Use the legs and core, not just arms'],
   'Elliptical': ['Stand tall, light grip on the handles','Push through the whole foot','Engage the core; smooth stride'],
 };
+
+// Explicit aliases: variant names (mostly Hevy's naming) → canonical CUES key.
+const CUE_ALIASES = {
+  'Seated Cable Row - V Grip':            'Seated Cable Row',
+  'Seated Cable Row - Bar Grip':          'Seated Cable Row',
+  'Triceps Pushdown':                     'Tricep Pushdown (Cable)',
+  'Hanging Leg Raise':                    'Leg Raise (Hanging)',
+  'Romanian Deadlift (Barbell)':          'Romanian Deadlift',
+  'Leg Press (Machine)':                  'Leg Press',
+  'Seated Leg Curl (Machine)':            'Leg Curl (Seated)',
+  'Lying Leg Curl (Machine)':             'Leg Curl (Lying)',
+  'Chest Press (Machine)':                'Machine Chest Press',
+  'Overhead Triceps Extension (Cable)':   'Overhead Tricep Extension',
+  'Triceps Dip':                          'Tricep Dip',
+  'Chest Fly (Machine)':                  'Pec Deck',
+  'Lat Pulldown (Cable)':                 'Lat Pulldown',
+  'Straight Arm Lat Pulldown (Cable)':    'Straight Arm Pulldown',
+  'Rear Delt Reverse Fly (Cable)':        'Rear Delt Fly (Cable)',
+  'Preacher Curl (Machine)':              'Preacher Curl',
+  'Seated Incline Curl (Dumbbell)':       'Incline Dumbbell Curl',
+  'Leg Extension (Machine)':              'Leg Extension',
+  'Super Horizontal Calf Press':          'Calf Raise (Leg Press)',
+  'Squat (Smith Machine)':                'Squat (Barbell)',
+  'Shoulder Press (Machine)':             'Machine Shoulder Press',
+};
+
+// Normalise for fuzzy matching: lowercase, drop parentheticals/punctuation,
+// unify tricep/triceps + dumbbell/db, collapse whitespace.
+function normName(s) {
+  return String(s).toLowerCase()
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\btriceps\b/g, 'tricep')
+    .replace(/\bbiceps\b/g, 'bicep')
+    .replace(/\bmachine\b/g, ' ')
+    .replace(/\bcable\b/g, ' ')
+    .replace(/\bbarbell\b/g, ' ')
+    .replace(/\bdumbbell\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const NORM_INDEX = {};
+for (const key of Object.keys(CUES)) {
+  const n = normName(key);
+  if (!(n in NORM_INDEX)) NORM_INDEX[n] = key;
+}
+
+// Resolve any exercise name to its cues. Returns array of cues or null.
+export function resolveCues(name) {
+  if (!name) return null;
+  if (CUES[name]) return CUES[name];
+  if (CUE_ALIASES[name] && CUES[CUE_ALIASES[name]]) return CUES[CUE_ALIASES[name]];
+  const n = normName(name);
+  if (NORM_INDEX[n]) return CUES[NORM_INDEX[n]];
+  // Last resort: containment either way on normalised names (longest match wins)
+  let best = null, bestLen = 0;
+  for (const [norm, key] of Object.entries(NORM_INDEX)) {
+    if ((n.includes(norm) || norm.includes(n)) && norm.length > bestLen) {
+      best = key; bestLen = norm.length;
+    }
+  }
+  return best ? CUES[best] : null;
+}

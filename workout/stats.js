@@ -1,0 +1,189 @@
+// Stats & charts — pure inline-SVG, no libraries.
+// All functions take the array of saved session objects and return HTML strings.
+import { CATEGORY_COLORS } from './exercises.js';
+import { e1RM } from './achievements.js';
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const dateOf = s => new Date((s.date || (s.startTime || '').slice(0, 10) || '1970-01-01') + 'T12:00:00');
+const workingSets = ex => (ex.sets || []).filter(st => st.done && st.type !== 'warmup');
+
+function mondayOf(d) {
+  const x = new Date(d); x.setHours(12, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x.toISOString().slice(0, 10);
+}
+
+// ── Lifetime totals ───────────────────────────────────────────────────────────
+export function lifetimeTotals(sessions) {
+  let volume = 0, sets = 0, secs = 0;
+  for (const s of sessions) {
+    secs += s.duration || 0;
+    for (const ex of s.exercises || []) {
+      for (const st of ex.sets || []) {
+        if (!st.done) continue;
+        sets++;
+        volume += (st.weight || 0) * (st.reps || 1);
+      }
+    }
+  }
+  return { workouts: sessions.length, hours: secs / 3600, volume, sets };
+}
+
+// ── Weekly volume (stacked by muscle group) ───────────────────────────────────
+export function weeklyVolumeHTML(sessions, weeksBack = 12) {
+  const weeks = []; // oldest → newest
+  const start = new Date(); start.setDate(start.getDate() - 7 * (weeksBack - 1));
+  for (let i = 0; i < weeksBack; i++) {
+    const d = new Date(start); d.setDate(d.getDate() + 7 * i);
+    weeks.push(mondayOf(d));
+  }
+  const byWeek = Object.fromEntries(weeks.map(w => [w, {}]));
+
+  for (const s of sessions) {
+    const wk = mondayOf(dateOf(s));
+    if (!(wk in byWeek)) continue;
+    for (const ex of s.exercises || []) {
+      const cat = ex.category || 'Other';
+      for (const st of workingSets(ex)) {
+        byWeek[wk][cat] = (byWeek[wk][cat] || 0) + (st.weight || 0) * (st.reps || 1);
+      }
+    }
+  }
+
+  const totals = weeks.map(w => Object.values(byWeek[w]).reduce((a, b) => a + b, 0));
+  const max = Math.max(...totals, 1);
+
+  const W = 340, H = 150, pad = 4, bw = (W - pad * 2) / weeksBack;
+  let svg = '';
+  weeks.forEach((w, i) => {
+    let y = H - 18;
+    const entries = Object.entries(byWeek[w]).sort((a, b) => b[1] - a[1]);
+    for (const [cat, vol] of entries) {
+      const h = (vol / max) * (H - 30);
+      y -= h;
+      svg += `<rect x="${pad + i * bw + 1}" y="${y}" width="${bw - 2}" height="${h}" rx="1.5" fill="${CATEGORY_COLORS[cat] || '#888'}"/>`;
+    }
+    // week label: show every ~4th
+    if (i % 4 === 0 || i === weeksBack - 1) {
+      const lbl = new Date(w + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      svg += `<text x="${pad + i * bw + bw / 2}" y="${H - 5}" font-size="8" fill="var(--text-muted)" text-anchor="middle">${lbl}</text>`;
+    }
+  });
+
+  const thisWeekVol = Math.round(totals[totals.length - 1]);
+  return `
+    <div class="stats-card">
+      <div class="stats-card-title">Weekly volume <span class="stats-card-sub">this week: ${thisWeekVol.toLocaleString()} kg</span></div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${svg}</svg>
+    </div>`;
+}
+
+// ── Muscle balance (working sets over trailing N weeks vs 10–20/wk band) ──────
+export function muscleBalanceHTML(sessions, weeksBack = 4) {
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7 * weeksBack);
+  const perCat = {};
+  for (const s of sessions) {
+    if (dateOf(s) < cutoff) continue;
+    for (const ex of s.exercises || []) {
+      if (ex.category === 'Cardio') continue;
+      perCat[ex.category || 'Other'] = (perCat[ex.category || 'Other'] || 0) + workingSets(ex).length;
+    }
+  }
+  const rows = Object.entries(perCat)
+    .map(([cat, sets]) => ({ cat, perWk: sets / weeksBack }))
+    .sort((a, b) => b.perWk - a.perWk);
+  if (!rows.length) return '';
+
+  const maxScale = Math.max(24, ...rows.map(r => r.perWk));
+  const rowHTML = rows.map(r => {
+    const pct = Math.min(100, (r.perWk / maxScale) * 100);
+    const status = r.perWk < 10 ? 'low' : r.perWk > 20 ? 'high' : 'ok';
+    return `
+      <div class="mb-row">
+        <span class="mb-cat">${esc(r.cat)}</span>
+        <div class="mb-track">
+          <div class="mb-band" style="left:${(10 / maxScale) * 100}%;width:${(10 / maxScale) * 100}%"></div>
+          <div class="mb-fill mb-${status}" style="width:${pct}%;background:${CATEGORY_COLORS[r.cat] || '#888'}"></div>
+        </div>
+        <span class="mb-val">${r.perWk.toFixed(1)}</span>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="stats-card">
+      <div class="stats-card-title">Muscle balance <span class="stats-card-sub">sets/week, last ${weeksBack} wks · band = 10–20</span></div>
+      ${rowHTML}
+    </div>`;
+}
+
+// ── Per-exercise progression ──────────────────────────────────────────────────
+// All exercises seen in history, most-frequent first.
+export function exerciseFrequency(sessions) {
+  const freq = {};
+  for (const s of sessions) for (const ex of s.exercises || []) {
+    if (!workingSets(ex).length) continue;
+    (freq[ex.name] ||= { name: ex.name, category: ex.category, n: 0 }).n++;
+  }
+  return Object.values(freq).sort((a, b) => b.n - a.n);
+}
+
+export function progressionHTML(sessions, exName) {
+  const points = [];
+  for (const s of sessions) {
+    const ex = (s.exercises || []).find(e => e.name === exName);
+    if (!ex) continue;
+    const sets = workingSets(ex).filter(st => (st.weight || 0) > 0);
+    if (!sets.length) continue;
+    const top = sets.reduce((a, b) => (b.weight > a.weight ? b : a));
+    points.push({
+      t: dateOf(s).getTime(),
+      top: top.weight,
+      est: e1RM(top.weight, top.reps || 1),
+    });
+  }
+  points.sort((a, b) => a.t - b.t);
+  if (points.length < 2) {
+    return `<div class="stats-empty">Need at least 2 logged sessions of ${esc(exName)} to chart progression.</div>`;
+  }
+
+  const W = 340, H = 160, padL = 30, padR = 8, padT = 10, padB = 20;
+  const t0 = points[0].t, t1 = points[points.length - 1].t;
+  const ys = points.flatMap(p => [p.top, p.est]);
+  const yMin = Math.min(...ys) * 0.92, yMax = Math.max(...ys) * 1.06;
+  const X = t => padL + ((t - t0) / Math.max(1, t1 - t0)) * (W - padL - padR);
+  const Y = v => padT + (1 - (v - yMin) / Math.max(1, yMax - yMin)) * (H - padT - padB);
+  const path = key => points.map((p, i) => `${i ? 'L' : 'M'}${X(p.t).toFixed(1)},${Y(p[key]).toFixed(1)}`).join(' ');
+
+  // y gridlines: 3 ticks
+  let grid = '';
+  for (let i = 0; i <= 2; i++) {
+    const v = yMin + ((yMax - yMin) * i) / 2;
+    grid += `<line x1="${padL}" x2="${W - padR}" y1="${Y(v)}" y2="${Y(v)}" stroke="rgba(255,255,255,0.07)"/>` +
+            `<text x="${padL - 4}" y="${Y(v) + 3}" font-size="8" fill="var(--text-muted)" text-anchor="end">${Math.round(v)}</text>`;
+  }
+  const d0 = new Date(t0).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+  const d1 = new Date(t1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+  const dots = points.map(p => `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.top).toFixed(1)}" r="2.4" fill="#4fc3f7"/>`).join('');
+
+  const last = points[points.length - 1], first = points[0];
+  const delta = last.top - first.top;
+
+  return `
+    <div class="stats-card">
+      <div class="stats-card-title">${esc(exName)}
+        <span class="stats-card-sub">${delta >= 0 ? '+' : ''}${Math.round(delta * 10) / 10} kg top set since ${d0}</span>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+        ${grid}
+        <path d="${path('est')}" fill="none" stroke="#fbbf24" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.8"/>
+        <path d="${path('top')}" fill="none" stroke="#4fc3f7" stroke-width="2"/>
+        ${dots}
+        <text x="${padL}" y="${H - 6}" font-size="8" fill="var(--text-muted)">${d0}</text>
+        <text x="${W - padR}" y="${H - 6}" font-size="8" fill="var(--text-muted)" text-anchor="end">${d1}</text>
+      </svg>
+      <div class="stats-legend">
+        <span><i style="background:#4fc3f7"></i>Top set kg</span>
+        <span><i style="background:#fbbf24"></i>Est. 1RM</span>
+      </div>
+    </div>`;
+}
