@@ -347,6 +347,32 @@
     .stats-card {
       background:var(--surface); border-radius:var(--radius); padding:14px; margin-bottom:12px;
     }
+    /* Monthly view */
+    .month-card { border:1px solid rgba(79,195,247,0.2); }
+    .month-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .month-nav-btn {
+      background:var(--surface2); border:none; border-radius:8px; color:var(--text);
+      font-size:1.2rem; width:34px; height:34px; cursor:pointer; -webkit-tap-highlight-color:transparent;
+    }
+    .month-nav-btn:disabled { opacity:0.3; }
+    .month-title { font-size:1rem; font-weight:800; }
+    .month-totals { display:flex; gap:8px; margin-bottom:16px; }
+    .month-stat { flex:1; background:var(--surface2); border-radius:12px; padding:12px 8px; text-align:center; }
+    .month-stat-val { font-size:1.35rem; font-weight:800; color:var(--blue); letter-spacing:-0.5px; }
+    .month-stat-lbl { font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-top:3px; }
+    .cal-dow { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px; }
+    .cal-dow span { font-size:0.6rem; color:var(--text-muted); text-align:center; font-weight:700; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+    .cal-cell {
+      aspect-ratio:1; border-radius:7px; background:var(--surface2);
+      display:flex; align-items:center; justify-content:center; position:relative;
+    }
+    .cal-cell span { font-size:0.68rem; color:var(--text-muted); }
+    .cal-empty { background:none; }
+    .cal-trained { background:rgba(79,195,247,calc(0.18 + var(--i,0.5) * 0.55)); }
+    .cal-trained span { color:#fff; font-weight:700; }
+    .cal-today { outline:2px solid var(--amber); outline-offset:-2px; }
+    .month-foot { font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:12px; }
     .stats-card-title { font-size:0.85rem; font-weight:700; margin-bottom:12px; }
     .stats-card-sub { font-size:0.7rem; font-weight:600; color:var(--text-muted); margin-left:6px; }
     .stats-legend { display:flex; gap:16px; font-size:0.7rem; color:var(--text-muted); margin-top:8px; }

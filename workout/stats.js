@@ -13,6 +13,74 @@ function mondayOf(d) {
   return x.toISOString().slice(0, 10);
 }
 
+const fmtDur = secs => {
+  const h = Math.floor(secs / 3600), m = Math.round((secs % 3600) / 60);
+  return h ? `${h}h ${m}m` : `${m}m`;
+};
+
+// ── Monthly view (workouts / time / weight + trained-day calendar) ────────────
+// year, monthIndex are 0-based month. Returns HTML with nav buttons
+// (#monthPrev / #monthNext) the caller re-wires each render.
+export function monthlyViewHTML(sessions, year, monthIdx) {
+  const inMonth = sessions.filter(s => {
+    const d = dateOf(s);
+    return d.getFullYear() === year && d.getMonth() === monthIdx;
+  });
+
+  let secs = 0, volume = 0, setCount = 0;
+  const trained = {}; // dayOfMonth -> volume
+  for (const s of inMonth) {
+    secs += s.duration || 0;
+    const day = dateOf(s).getDate();
+    for (const ex of s.exercises || []) {
+      for (const st of ex.sets || []) {
+        if (!st.done) continue;
+        setCount++;
+        const v = (st.weight || 0) * (st.reps || 1);
+        volume += v;
+        trained[day] = (trained[day] || 0) + v;
+      }
+    }
+  }
+
+  const monthName = new Date(year, monthIdx, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const now = new Date();
+  const isCurrentOrFuture = year > now.getFullYear() || (year === now.getFullYear() && monthIdx >= now.getMonth());
+
+  // Calendar grid, Monday-first
+  const firstDow = (new Date(year, monthIdx, 1).getDay() + 6) % 7; // Mon=0
+  const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+  const maxVol = Math.max(1, ...Object.values(trained));
+  const todayDay = (now.getFullYear() === year && now.getMonth() === monthIdx) ? now.getDate() : -1;
+
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const vol = trained[d] || 0;
+    const intensity = vol ? 0.35 + 0.65 * (vol / maxVol) : 0;
+    const cls = 'cal-cell' + (vol ? ' cal-trained' : '') + (d === todayDay ? ' cal-today' : '');
+    const style = vol ? `style="--i:${intensity.toFixed(2)}"` : '';
+    cells += `<div class="${cls}" ${style}><span>${d}</span></div>`;
+  }
+
+  return `
+    <div class="stats-card month-card">
+      <div class="month-nav">
+        <button class="month-nav-btn" id="monthPrev">‹</button>
+        <span class="month-title">${monthName}</span>
+        <button class="month-nav-btn" id="monthNext" ${isCurrentOrFuture ? 'disabled' : ''}>›</button>
+      </div>
+      <div class="month-totals">
+        <div class="month-stat"><div class="month-stat-val">${inMonth.length}</div><div class="month-stat-lbl">Workouts</div></div>
+        <div class="month-stat"><div class="month-stat-val">${fmtDur(secs)}</div><div class="month-stat-lbl">Time</div></div>
+        <div class="month-stat"><div class="month-stat-val">${(volume/1000).toFixed(1)}t</div><div class="month-stat-lbl">Lifted</div></div>
+      </div>
+      <div class="cal-dow">${['M','T','W','T','F','S','S'].map(d => `<span>${d}</span>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+      ${inMonth.length ? `<div class="month-foot">${setCount.toLocaleString()} sets · ${Math.round(volume).toLocaleString()} kg total</div>` : `<div class="month-foot">No workouts logged this month.</div>`}
+    </div>`;
+}
+
 // ── Lifetime totals ───────────────────────────────────────────────────────────
 export function lifetimeTotals(sessions) {
   let volume = 0, sets = 0, secs = 0;

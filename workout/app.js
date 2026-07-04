@@ -7,7 +7,7 @@ import { MY_ROUTINES } from './myRoutines.js';
 import { buildRecords, detectPBs, absorbSet, e1RM,
          getStreakSettings, saveStreakSettings, computeStreak, computeMilestones } from './achievements.js';
 import { lifetimeTotals, weeklyVolumeHTML, muscleBalanceHTML,
-         exerciseFrequency, progressionHTML } from './stats.js';
+         exerciseFrequency, progressionHTML, monthlyViewHTML } from './stats.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -1353,6 +1353,7 @@ function workoutCard(s) {
 
 // ── Stats tab ─────────────────────────────────────────────────────────────────
 let statsExercise = null;
+let statsMonth = null; // { y, m } — defaults to current month
 async function renderStats() {
   const el = document.getElementById('statsBody');
   const sessions = await loadSessions();
@@ -1372,7 +1373,12 @@ async function renderStats() {
   const freq = exerciseFrequency(sessions);
   if (!statsExercise && freq.length) statsExercise = freq[0].name;
 
+  const now = new Date();
+  if (!statsMonth) statsMonth = { y: now.getFullYear(), m: now.getMonth() };
+
   el.innerHTML = `
+    ${monthlyViewHTML(sessions, statsMonth.y, statsMonth.m)}
+
     <div class="stats-totals">
       <div class="stat-box"><div class="stat-val">${totals.workouts}</div><div class="stat-label">Workouts</div></div>
       <div class="stat-box"><div class="stat-val">${totals.hours.toFixed(0)}h</div><div class="stat-label">Trained</div></div>
@@ -1398,6 +1404,19 @@ async function renderStats() {
       <div id="statsProgression"></div>
     </div>
   `;
+
+  // Month navigation
+  const shiftMonth = delta => {
+    let { y, m } = statsMonth;
+    m += delta;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    statsMonth = { y, m };
+    renderStats();
+  };
+  document.getElementById('monthPrev').onclick = () => shiftMonth(-1);
+  const nextBtn = document.getElementById('monthNext');
+  if (nextBtn && !nextBtn.disabled) nextBtn.onclick = () => shiftMonth(1);
 
   const renderProg = () => {
     document.getElementById('statsProgression').innerHTML =
