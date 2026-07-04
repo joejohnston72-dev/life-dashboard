@@ -8,6 +8,7 @@ import { buildRecords, detectPBs, absorbSet, e1RM,
          getStreakSettings, saveStreakSettings, computeStreak, computeMilestones } from './achievements.js';
 import { lifetimeTotals, weeklyVolumeHTML, muscleBalanceHTML,
          exerciseFrequency, progressionHTML, monthlyViewHTML } from './stats.js';
+import { assembleContext, callCoach, validateRoutine } from './coach.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -128,9 +129,9 @@ document.querySelectorAll('.tab').forEach(btn => {
       activeTab === 'Dashboard' ? 'Workout' : activeTab;
     document.getElementById('miniBar').classList.toggle('visible', !!activeSession);
     if (activeTab === 'Dashboard') { renderDashboard(); }
-    if (activeTab === 'History')   { renderHistory();   }
     if (activeTab === 'Library')   { renderLibrary();   }
-    if (activeTab === 'Stats')     { renderStats();     }
+    if (activeTab === 'Stats')     { renderStats(); renderHistory(); }
+    if (activeTab === 'Coach')     { renderCoach();     }
   };
 });
 
@@ -1822,6 +1823,180 @@ function parseCommaCSV(text) {
 document.getElementById('awTitle').addEventListener('input', e => {
   if (activeSession) { activeSession.title = e.target.value; saveSoon(); }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+//  AI COACH
+// ════════════════════════════════════════════════════════════════════════════
+let coachThread = null;   // [{role, text, routine?}]
+let coachBusy = false;
+
+// Reuse the key the user already entered in Habits; fall back to a workout-store key.
+async function coachGetKey() {
+  return (await db.get('workout', 'anthropic-key')) || (await db.get('habits', 'anthropic-key')) || '';
+}
+
+async function loadCoachThread() {
+  if (!coachThread) coachThread = (await db.get('workout', 'coach-thread')) || [];
+  return coachThread;
+}
+function persistCoachThread() { db.set('workout', 'coach-thread', coachThread); }
+
+async function renderCoach() {
+  await loadCoachThread();
+  const thread = document.getElementById('coachThread');
+  thread.innerHTML = '';
+  if (!coachThread.length) {
+    thread.innerHTML = `<div class="coach-empty">👋 I'm your training coach.<br>Ask me to draft a routine, plan today's session, review your progress, or answer any form/technique question.</div>`;
+  } else {
+    coachThread.forEach(m => thread.appendChild(renderCoachMessage(m)));
+  }
+  scrollCoachDown();
+}
+
+function scrollCoachDown() {
+  const t = document.getElementById('coachThread');
+  requestAnimationFrame(() => { t.scrollTop = t.scrollHeight; });
+}
+
+function renderCoachMessage(m) {
+  const wrap = document.createElement('div');
+  wrap.style.display = 'contents';
+  if (m.text) {
+    const b = document.createElement('div');
+    b.className = 'coach-msg ' + (m.role === 'user' ? 'user' : 'bot') + (m.error ? ' err' : '');
+    b.textContent = m.text;
+    wrap.appendChild(b);
+  }
+  if (m.routine) wrap.appendChild(renderRoutineCard(m.routine));
+  return wrap;
+}
+
+function renderRoutineCard(routine) {
+  const card = document.createElement('div');
+  card.className = 'coach-routine';
+  card.innerHTML = `
+    <div class="coach-routine-name">${esc(routine.name)}</div>
+    ${routine.exercises.map(e => `
+      <div class="coach-routine-ex"><b>${esc(e.name)}</b><span>${e.sets.length}×${e.sets[0]?.reps ?? ''}${e.category === 'Cardio' ? ' min' : ''}</span></div>
+    `).join('')}
+    <div class="coach-routine-btns">
+      <button class="cr-start">▶ Start workout</button>
+      <button class="cr-save">＋ Save as routine</button>
+    </div>`;
+  card.querySelector('.cr-start').onclick = () => { startEmptyWorkout(routine); };
+  card.querySelector('.cr-save').onclick  = () => saveTemplate(routine.name, routine.exercises);
+  return card;
+}
+
+const COACH_ERRORS = {
+  nokey:     'Add your Anthropic API key to use the coach — tap 🔑 below.',
+  auth:      'That API key was rejected (401). Tap 🔑 to update it.',
+  ratelimit: 'Rate limited — wait a moment and try again.',
+  network:   'Network error — check your connection and try again.',
+  toolarge:  'That request was too large. Try a shorter message.',
+  api:       'The AI service returned an error. Try again shortly.',
+};
+
+async function sendCoach(text, forceTool = false) {
+  if (coachBusy) return;
+  text = text.trim();
+  if (!text) return;
+  await loadCoachThread();
+
+  const key = await coachGetKey();
+  const thread = document.getElementById('coachThread');
+  if (thread.querySelector('.coach-empty')) thread.innerHTML = '';
+
+  // user bubble
+  const userMsg = { role: 'user', text };
+  coachThread.push(userMsg);
+  thread.appendChild(renderCoachMessage(userMsg));
+  persistCoachThread();
+  document.getElementById('coachInput').value = '';
+  scrollCoachDown();
+
+  if (!key) {
+    pushCoachError('nokey');
+    return;
+  }
+
+  // typing indicator
+  coachBusy = true;
+  const typing = document.createElement('div');
+  typing.className = 'coach-typing';
+  typing.innerHTML = '<span></span><span></span><span></span>';
+  thread.appendChild(typing);
+  scrollCoachDown();
+
+  try {
+    const system = await assembleContext({
+      loadSessions, getTemplates, getAllExercises, getStreakSettings,
+    });
+    const apiMessages = coachThread.map(m =>
+      m.role === 'assistant'
+        ? { role: 'assistant', content: m.text || (m.routine ? `[Drafted routine: ${m.routine.name}]` : '…') }
+        : { role: 'user', content: m.text }
+    );
+    const result = await callCoach({ apiMessages, system, forceTool, getKey: coachGetKey });
+    typing.remove();
+
+    if (result.error) { pushCoachError(result.error); coachBusy = false; return; }
+
+    const botMsg = { role: 'assistant', text: result.text || '' };
+    if (result.routine) {
+      try {
+        botMsg.routine = await validateRoutine(result.routine, { getAllExercises, guessCategory });
+        if (!botMsg.text) botMsg.text = `Here's a routine — “${botMsg.routine.name}”:`;
+      } catch (_) {
+        if (!botMsg.text) botMsg.text = "I drafted something but couldn't structure it — try rephrasing.";
+      }
+    }
+    if (!botMsg.text && !botMsg.routine) botMsg.text = '(no response)';
+    coachThread.push(botMsg);
+    thread.appendChild(renderCoachMessage(botMsg));
+    persistCoachThread();
+    scrollCoachDown();
+  } catch (_) {
+    typing.remove();
+    pushCoachError('network');
+  }
+  coachBusy = false;
+}
+
+function pushCoachError(code) {
+  const msg = { role: 'assistant', text: COACH_ERRORS[code] || COACH_ERRORS.api, error: true };
+  coachThread.push(msg);
+  document.getElementById('coachThread').appendChild(renderCoachMessage(msg));
+  persistCoachThread();
+  scrollCoachDown();
+}
+
+// ── Coach wiring ──────────────────────────────────────────────────────────────
+document.getElementById('coachSend').onclick = () => sendCoach(document.getElementById('coachInput').value);
+document.getElementById('coachInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); sendCoach(e.target.value); }
+});
+document.querySelectorAll('.coach-chip[data-prompt]').forEach(chip => {
+  chip.onclick = () => sendCoach(chip.dataset.prompt, chip.dataset.force === '1');
+});
+document.getElementById('coachClearBtn').onclick = async () => {
+  if (!confirm('Clear the coach chat?')) return;
+  coachThread = [];
+  await db.set('workout', 'coach-thread', []);
+  renderCoach();
+};
+document.getElementById('coachKeyBtn').onclick = async () => {
+  document.getElementById('coachKeyInput').value = await coachGetKey();
+  document.getElementById('coachKeyModal').classList.add('open');
+};
+document.getElementById('coachKeyCancel').onclick = () => document.getElementById('coachKeyModal').classList.remove('open');
+document.getElementById('coachKeyModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('coachKeyModal')) document.getElementById('coachKeyModal').classList.remove('open');
+});
+document.getElementById('coachKeySave').onclick = async () => {
+  await db.set('workout', 'anthropic-key', document.getElementById('coachKeyInput').value.trim());
+  document.getElementById('coachKeyModal').classList.remove('open');
+};
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 await seedMyRoutinesOnce();

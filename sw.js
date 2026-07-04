@@ -1,4 +1,4 @@
-const CACHE = 'life-dashboard-v23';
+const CACHE = 'life-dashboard-v24';
 const PRECACHE = [
   '/life-dashboard/',
   '/life-dashboard/index.html',
@@ -21,6 +21,7 @@ const PRECACHE = [
   '/life-dashboard/workout/myRoutines.js',
   '/life-dashboard/workout/stats.js',
   '/life-dashboard/workout/achievements.js',
+  '/life-dashboard/workout/coach.js',
   '/life-dashboard/workout/manifest.json',
   '/life-dashboard/workout/icon.png',
 ];

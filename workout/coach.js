@@ -1,0 +1,236 @@
+// AI Coach — Anthropic tool-use call, context builder, routine validation.
+// Pure logic: NO imports from app.js. The app injects its module-scoped
+// helpers (getAllExercises, guessCategory, getKey) where needed.
+import db from '../shared/db.js';
+import { CATEGORIES } from './exercises.js';
+import { buildRecords, computeStreak } from './achievements.js';
+import { lifetimeTotals, exerciseFrequency } from './stats.js';
+
+const MODEL = 'claude-sonnet-5';
+
+// ── The one tool: draft_routine (schema == the app's template contract) ───────
+export const DRAFT_ROUTINE_TOOL = {
+  name: 'draft_routine',
+  description: "Produce a structured workout routine ONLY when the user asks you to create, draft, or suggest a specific workout or training day (including 'what should I train today'). For advice, progression discussion, form/technique questions, or program review, respond with plain text instead of calling this tool.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Short routine name, e.g. "Upper A" or "Push Day".' },
+      exercises: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name:     { type: 'string', description: 'Exercise name. Choose from the ALLOWED EXERCISES list in the system prompt (exact or close — the app fuzzy-matches and will add anything new as a custom exercise).' },
+            category: { type: 'string', enum: CATEGORIES },
+            restTime: { type: 'integer', description: 'Rest between sets in seconds, e.g. 60, 90, 120, 180.' },
+            sets: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  weight: { type: 'number',  description: 'Target weight in kg. 0 for bodyweight or when unknown.' },
+                  reps:   { type: 'integer', description: 'Target reps. For Cardio, reps = minutes.' },
+                  type:   { type: 'string', enum: ['normal', 'warmup', 'dropset'] },
+                },
+                required: ['weight', 'reps', 'type'],
+              },
+            },
+          },
+          required: ['name', 'category', 'restTime', 'sets'],
+        },
+      },
+    },
+    required: ['name', 'exercises'],
+  },
+};
+
+// ── Name normalisation (ported from cues.js — that copy is not exported) ──────
+export function normName(s) {
+  return String(s).toLowerCase()
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\btriceps\b/g, 'tricep')
+    .replace(/\bbiceps\b/g, 'bicep')
+    .replace(/\bmachine\b/g, ' ')
+    .replace(/\bcable\b/g, ' ')
+    .replace(/\bbarbell\b/g, ' ')
+    .replace(/\bdumbbell\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ── Context builder → system prompt ───────────────────────────────────────────
+export function buildCoachContext(sessions, templates, records, streak, allExercises) {
+  const byCat = {};
+  for (const e of allExercises) (byCat[e.category] ||= []).push(e.name);
+  const allowed = Object.entries(byCat)
+    .map(([cat, names]) => `${cat}: ${names.join(', ')}`)
+    .join('\n');
+
+  const lt = lifetimeTotals(sessions);
+  const freq = exerciseFrequency(sessions).slice(0, 20);
+  const topLines = freq.map(f => {
+    const r = records[f.name];
+    const best = r ? `best ${r.maxWeight}kg, e1RM ${Math.round(r.maxE1rm)}kg` : 'no working sets';
+    return `- ${f.name} (${f.category}): ${best}, done ${f.n}×`;
+  }).join('\n');
+
+  const recent = sessions.slice(0, 6).map(s => {
+    const date = s.date || (s.startTime || '').slice(0, 10);
+    const lifts = (s.exercises || []).slice(0, 4).map(ex => {
+      const done = (ex.sets || []).filter(st => st.done && st.weight);
+      if (!done.length) return ex.name;
+      const top = done.reduce((a, b) => (b.weight > a.weight ? b : a));
+      return ex.category === 'Cardio' ? `${ex.name} ${top.reps}min` : `${ex.name} ${top.weight}×${top.reps}`;
+    }).join(', ');
+    return `- ${date} ${s.title || 'Workout'}: ${lifts}`;
+  }).join('\n');
+
+  const routines = (templates || []).slice(0, 8).map(t =>
+    `- ${t.name}: ${t.exercises.map(e => e.name).join(', ')}`
+  ).join('\n');
+
+  return `You are an expert strength & hypertrophy coach living inside the user's workout app. The user is an experienced lifter in the UK — all weights are in KILOGRAMS (kg), never pounds or dollars.
+
+HOW TO RESPOND
+- Be concise and practical. Give a clear recommendation, not an exhaustive survey.
+- For questions, advice, progression (next weights/reps, deloads, weak points), or program review: reply in plain text.
+- Only call the draft_routine tool when the user actually wants a workout/day created or "what should I train today". Otherwise don't call it.
+
+DRAFTING RULES
+- Only use exercise names from the ALLOWED EXERCISES list below (close/fuzzy is fine — the app remaps; anything genuinely new becomes a custom exercise).
+- Respect any equipment, time, or injury constraints the user states.
+- Sensible defaults: main compounds 3–4 working sets of 5–8 reps, rest 120–180s; accessories/isolation 3 sets of 8–15 reps, rest 60–90s. Add 1–2 warmup sets (type "warmup") on the first heavy compound. Prioritise compounds first. For Cardio, set reps = minutes and weight = 0. Use the user's recent working weights (below) as the starting target where known.
+
+ALLOWED EXERCISES
+${allowed}
+
+THIS LIFTER
+Lifetime: ${lt.workouts} workouts, ${lt.hours.toFixed(0)}h trained, ${(lt.volume/1000).toFixed(1)} tonnes lifted. Current streak: ${streak.weeks} week(s) (${streak.thisWeekCount}/${streak.target} this week).
+
+TOP EXERCISES (by frequency, with bests)
+${topLines || '- (no history yet)'}
+
+RECENT SESSIONS
+${recent || '- (none yet)'}
+
+SAVED ROUTINES
+${routines || '- (none yet)'}`;
+}
+
+// Assemble everything callers need for a request. Convenience wrapper.
+export async function assembleContext({ loadSessions, getTemplates, getAllExercises, getStreakSettings }) {
+  const sessions  = await loadSessions();
+  const templates = await getTemplates();
+  const records   = buildRecords(sessions);
+  const streak    = computeStreak(sessions, await getStreakSettings());
+  const allEx     = await getAllExercises();
+  return buildCoachContext(sessions, templates, records, streak, allEx);
+}
+
+// ── Validate/normalise a model-produced routine into the template contract ────
+export async function validateRoutine(routine, { getAllExercises, guessCategory }) {
+  const all = await getAllExercises();
+  const NORM_INDEX = {};
+  for (const e of all) { const n = normName(e.name); if (!(n in NORM_INDEX)) NORM_INDEX[n] = e; }
+
+  const resolve = (name) => {
+    const n = normName(name);
+    if (!n) return null;
+    if (NORM_INDEX[n]) return NORM_INDEX[n];
+    // Containment fallback for qualified names (e.g. "Lat Pulldown Wide Grip" → "Lat Pulldown").
+    // Only where a known name is a substring of the AI's (more-qualified) name, and the
+    // known name is substantial (>=6 chars) so single words like "row"/"curl"/"dip" don't
+    // collapse novel exercises onto arbitrary ones. Longest match wins.
+    let best = null, bestLen = 0;
+    for (const [norm, e] of Object.entries(NORM_INDEX)) {
+      if (norm.length >= 6 && norm.length > bestLen && n.includes(norm)) {
+        best = e; bestLen = norm.length;
+      }
+    }
+    return best;
+  };
+
+  const existingCustom = (await db.get('workout', 'exercises-custom')) || [];
+  let customsChanged = false;
+
+  const out = { name: String(routine?.name || 'AI Routine').slice(0, 60), exercises: [] };
+  for (const ex of (routine?.exercises || [])) {
+    const hit = resolve(ex.name || '');
+    let name, category;
+    if (hit) {
+      name = hit.name; category = hit.category;
+    } else {
+      name = String(ex.name || 'Exercise').slice(0, 60);
+      category = CATEGORIES.includes(ex.category) ? ex.category : guessCategory(name);
+      // register as a custom exercise (dedupe by normName)
+      const nn = normName(name);
+      if (!all.some(e => normName(e.name) === nn) && !existingCustom.some(e => normName(e.name) === nn)) {
+        existingCustom.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,7), name, category, custom: true });
+        NORM_INDEX[nn] = { name, category };
+        all.push({ name, category, custom: true });
+        customsChanged = true;
+      }
+    }
+    let sets = Array.isArray(ex.sets) ? ex.sets : [];
+    sets = sets.map(s => ({
+      weight: Math.max(0, Number(s?.weight) || 0),
+      reps:   Math.max(0, parseInt(s?.reps) || 0),
+      type:   ['normal','warmup','dropset'].includes(s?.type) ? s.type : 'normal',
+    }));
+    if (!sets.length) sets = [{ weight: 0, reps: 8, type: 'normal' }];
+    out.exercises.push({ name, category, restTime: Math.max(0, parseInt(ex.restTime) || 60), sets });
+  }
+  if (customsChanged) await db.set('workout', 'exercises-custom', existingCustom);
+  if (!out.exercises.length) throw new Error('empty routine');
+  return out;
+}
+
+// ── The API call ──────────────────────────────────────────────────────────────
+// apiMessages: [{role:'user'|'assistant', content:string}]
+// Returns { text, routine|null, error|null }.
+export async function callCoach({ apiMessages, system, forceTool = false, getKey }) {
+  const key = await getKey();
+  if (!key) return { error: 'nokey' };
+
+  const body = {
+    model: MODEL,
+    max_tokens: 1500,
+    system,
+    tools: [DRAFT_ROUTINE_TOOL],
+    tool_choice: forceTool ? { type: 'tool', name: 'draft_routine' } : { type: 'auto' },
+    messages: apiMessages,
+  };
+
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (_) {
+    return { error: 'network' };
+  }
+
+  if (res.status === 401) return { error: 'auth' };
+  if (res.status === 429) return { error: 'ratelimit' };
+  if (res.status === 413) return { error: 'toolarge' };
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { msg = (await res.json())?.error?.message || msg; } catch (_) {}
+    return { error: 'api', detail: msg };
+  }
+
+  const data = await res.json();
+  if (data.stop_reason === 'refusal') return { text: "I can't help with that one.", routine: null };
+  const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  const toolBlock  = (data.content || []).find(b => b.type === 'tool_use');
+  return { text: textBlocks, routine: toolBlock ? toolBlock.input : null };
+}

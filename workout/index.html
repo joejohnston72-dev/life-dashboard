@@ -47,7 +47,7 @@
     .tab .ti { font-size:1.1rem; }
     .tab.active { color: var(--blue); }
 
-    .section { display:none; padding: 0 var(--gap); }
+    .section { display:none; padding: 0 var(--gap) calc(env(safe-area-inset-bottom) + 72px); }
     .section.active { display:block; }
 
     /* ── Dashboard ── */
@@ -391,6 +391,58 @@
     .mb-fill.mb-low { opacity:0.45; }
     .mb-val { font-size:0.72rem; color:var(--text-muted); width:32px; text-align:right; font-variant-numeric:tabular-nums; }
 
+    /* ── AI Coach ── */
+    /* Coach is a flex column filling from the page header to the tab bar; it
+       manages its own scroll + input, so it overrides the .section padding. */
+    #secCoach { padding:0; }
+    #secCoach.active {
+      display:flex; flex-direction:column;
+      position:fixed; left:0; right:0;
+      top:calc(env(safe-area-inset-top) + 52px);           /* just below the page header */
+      bottom:calc(56px + env(safe-area-inset-bottom));      /* just above the tab bar */
+    }
+    .coach-thread { flex:1; overflow-y:auto; padding:12px var(--gap) 8px; display:flex; flex-direction:column; gap:10px; }
+    .coach-msg { max-width:85%; padding:10px 13px; border-radius:14px; font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-wrap:break-word; }
+    .coach-msg.user { align-self:flex-end; background:var(--blue); color:#000; border-bottom-right-radius:4px; }
+    .coach-msg.bot  { align-self:flex-start; background:var(--surface); color:var(--text); border-bottom-left-radius:4px; }
+    .coach-msg.bot.err { border:1px solid rgba(233,69,96,0.4); }
+    .coach-empty { color:var(--text-muted); font-size:0.85rem; text-align:center; padding:24px 10px; line-height:1.6; }
+    .coach-typing { align-self:flex-start; background:var(--surface); border-radius:14px; padding:12px 15px; display:flex; gap:4px; }
+    .coach-typing span { width:6px; height:6px; border-radius:50%; background:var(--text-muted); animation:ctd 1s infinite; }
+    .coach-typing span:nth-child(2){ animation-delay:.15s; } .coach-typing span:nth-child(3){ animation-delay:.3s; }
+    @keyframes ctd { 0%,60%,100%{ opacity:.3; transform:translateY(0);} 30%{ opacity:1; transform:translateY(-3px);} }
+    /* Routine card inside a bot message */
+    .coach-routine { align-self:flex-start; background:var(--surface); border:1px solid rgba(79,195,247,0.3); border-radius:14px; padding:14px; max-width:92%; }
+    .coach-routine-name { font-size:0.95rem; font-weight:800; margin-bottom:8px; }
+    .coach-routine-ex { display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; padding:3px 0; color:var(--text-muted); }
+    .coach-routine-ex b { color:var(--text); font-weight:600; }
+    .coach-routine-btns { display:flex; gap:8px; margin-top:12px; }
+    .coach-routine-btns button { flex:1; padding:11px; border:none; border-radius:10px; font-size:0.85rem; font-weight:700; cursor:pointer; }
+    .cr-start { background:var(--blue); color:#000; }
+    .cr-save  { background:var(--surface2); color:var(--text); }
+    .coach-chips { flex-shrink:0; display:flex; gap:7px; padding:6px var(--gap); overflow-x:auto; }
+    .coach-chips::-webkit-scrollbar { display:none; }
+    .coach-chip {
+      background:var(--surface); border:1px solid rgba(255,255,255,0.1); border-radius:18px;
+      color:var(--text); font-size:0.75rem; font-weight:600; padding:7px 12px; cursor:pointer;
+      white-space:nowrap; flex-shrink:0; -webkit-tap-highlight-color:transparent;
+    }
+    .coach-chip-key, .coach-chip-clear { padding:7px 11px; color:var(--text-muted); }
+    .coach-input {
+      flex-shrink:0; display:flex; gap:8px; align-items:center;
+      padding:8px var(--gap) calc(env(safe-area-inset-bottom) + 8px);
+      border-top:1px solid rgba(255,255,255,0.07); background:var(--bg);
+    }
+    .coach-input input {
+      flex:1; background:var(--surface2); border:1px solid rgba(255,255,255,0.08);
+      border-radius:20px; padding:11px 16px; color:var(--text); outline:none;
+    }
+    .coach-input input:focus { border-color:var(--blue); }
+    .coach-input button {
+      width:42px; height:42px; border-radius:50%; border:none; background:var(--blue);
+      color:#000; font-size:1.1rem; cursor:pointer; flex-shrink:0;
+    }
+
     /* ── PB decorations ── */
     .wc-pb { font-size:0.72rem; color:var(--amber); font-weight:700; }
     .hd-pb-list {
@@ -553,7 +605,19 @@
   </div>
 
   <!-- History -->
-  <div class="section" id="secHistory">
+  <!-- Library -->
+  <div class="section" id="secLibrary">
+    <div style="margin-bottom:12px">
+      <input class="form-input" id="libSearch" placeholder="Search exercises…" style="margin-bottom:10px">
+    </div>
+    <div id="libraryList2"></div>
+  </div>
+
+  <!-- Stats (+ History folded in below the charts) -->
+  <div class="section" id="secStats">
+    <div id="statsBody"></div>
+
+    <div class="section-heading" style="margin-top:22px">History</div>
     <button class="import-btn" id="importBtn">📥 Import from Hevy (CSV)</button>
     <button class="import-btn" id="clearHistoryBtn" style="border-color:rgba(233,69,96,0.4);color:#e94560">🗑 Clear all workout history</button>
     <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none">⚡ Build Routines from History</button>
@@ -568,23 +632,27 @@
     <div id="historyList"></div>
   </div>
 
-  <!-- Library -->
-  <div class="section" id="secLibrary">
-    <div style="margin-bottom:12px">
-      <input class="form-input" id="libSearch" placeholder="Search exercises…" style="margin-bottom:10px">
+  <!-- Coach (AI) -->
+  <div class="section" id="secCoach">
+    <div class="coach-thread" id="coachThread"></div>
+    <div class="coach-chips" id="coachChips">
+      <button class="coach-chip" data-prompt="Draft me a routine" data-force="1">🏗 Draft a routine</button>
+      <button class="coach-chip" data-prompt="What should I train today?" data-force="1">📅 Today's session</button>
+      <button class="coach-chip" data-prompt="How's my progress? What's lagging and what should I push?">📈 My progress</button>
+      <button class="coach-chip" data-prompt="Review my last workout and suggest what to adjust next time.">🔎 Review last</button>
+      <button class="coach-chip coach-chip-key" id="coachKeyBtn">🔑</button>
+      <button class="coach-chip coach-chip-clear" id="coachClearBtn">🗑</button>
     </div>
-    <div id="libraryList2"></div>
-  </div>
-
-  <!-- Stats -->
-  <div class="section" id="secStats">
-    <div id="statsBody"></div>
+    <div class="coach-input">
+      <input id="coachInput" placeholder="Ask your coach…" autocomplete="off">
+      <button id="coachSend" aria-label="Send">➤</button>
+    </div>
   </div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="Dashboard"><span class="ti">🏠</span>Home</button>
     <button class="tab" data-tab="Stats"><span class="ti">📈</span>Stats</button>
-    <button class="tab" data-tab="History"><span class="ti">📋</span>History</button>
+    <button class="tab" data-tab="Coach"><span class="ti">🤖</span>Coach</button>
     <button class="tab" data-tab="Library"><span class="ti">📚</span>Library</button>
   </nav>
 </div>
@@ -740,6 +808,23 @@
 </div>
 
 <!-- ── Template name modal ── -->
+<!-- ── Coach API key modal ── -->
+<div class="modal-backdrop" id="coachKeyModal">
+  <div class="modal">
+    <p class="modal-title">🤖 Coach — Anthropic API Key</p>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5">
+      Powers the AI coach (Claude Sonnet). Get one at console.anthropic.com — about £0.01 per message. Stored on your device.
+    </p>
+    <div class="form-group">
+      <input class="form-input" id="coachKeyInput" placeholder="sk-ant-api03-…" autocomplete="off">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-g" id="coachKeyCancel">Cancel</button>
+      <button class="btn btn-p" id="coachKeySave">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="templateNameModal">
   <div class="modal">
     <p class="modal-title">Save as Routine</p>
