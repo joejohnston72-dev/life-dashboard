@@ -222,6 +222,37 @@ function openActiveWorkout() {
   document.getElementById('miniBar').classList.remove('visible');
   document.getElementById('activeWorkout').classList.add('visible');
   document.getElementById('awTitle').value = activeSession?.title || '';
+  document.body.classList.add('workout-open');   // lock background scroll (tabs can't peek)
+  fitActiveWorkout();
+}
+
+// Size the overlay to the *visible* viewport so, when the keyboard opens, the
+// footer/rest-bar sit just above it and only .aw-body scrolls — never the page
+// behind. Without this iOS lets the background (incl. the tab bar) scroll into view.
+function fitActiveWorkout() {
+  const aw = document.getElementById('activeWorkout');
+  if (!aw.classList.contains('visible')) return;
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const keyboardOpen = (window.innerHeight - vv.height) > 100 || vv.offsetTop > 0;
+  if (keyboardOpen) {
+    aw.style.transition = 'none';                 // track the keyboard instantly, no lag
+    aw.style.height = vv.height + 'px';
+    aw.style.bottom = 'auto';
+    aw.style.transform = `translateY(${vv.offsetTop}px)`;
+  } else {
+    // no keyboard — clear overrides so the CSS entrance animation / layout applies
+    aw.style.transition = ''; aw.style.height = ''; aw.style.bottom = ''; aw.style.transform = '';
+  }
+}
+function unfitActiveWorkout() {
+  const aw = document.getElementById('activeWorkout');
+  aw.style.transition = ''; aw.style.height = ''; aw.style.bottom = ''; aw.style.transform = '';
+  document.body.classList.remove('workout-open');
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitActiveWorkout);
+  window.visualViewport.addEventListener('scroll', fitActiveWorkout);
 }
 
 // ── Restore an in-progress workout after a kill/reload ────────────────────────
@@ -423,13 +454,17 @@ function toggleSetDone(ei, setId, rowEl) {
     if (!set.weight && !set.touched.weight && set.tW) { set.weight = set.tW; wInput.value = set.tW; }
     if (!set.reps   && !set.touched.reps   && set.tR) { set.reps   = set.tR; rInput.value = set.tR; }
 
-    // Auto-fill the next set's weight if untouched
+    // Auto-fill the next set's weight if untouched, then jump focus to it so the
+    // keyboard stays up and the user can log the next set without re-tapping.
     const next = ex.sets[si + 1];
-    if (next && !next.done && !next.touched.weight && set.weight) {
-      next.weight = set.weight;
+    if (next && !next.done) {
       const nextRow = rowEl.parentElement.querySelector(`.set-row[data-set-id="${next.id}"]`);
-      const nInput = nextRow?.querySelector('[data-field="weight"]');
-      if (nInput) nInput.value = set.weight;
+      const nWeight = nextRow?.querySelector('[data-field="weight"]');
+      if (nWeight && !next.touched.weight && set.weight) { next.weight = set.weight; nWeight.value = set.weight; }
+      // focus the reps of the next set (weight is pre-filled) — synchronous so iOS keeps the keyboard open
+      const nReps = nextRow?.querySelector('[data-field="reps"]');
+      const target = nReps || nWeight;
+      if (target) { target.focus({ preventScroll: true }); try { target.select(); } catch(_) {} }
     }
 
     // PB detection
@@ -596,48 +631,62 @@ function exitReorderMode() {
 
 // ── Touch gestures: swipe on set rows, long-press on exercise headers,
 //    drag in reorder mode. Pointer events only; touch-action does the rest. ────
+// ── Set-row swipe gestures (work anywhere on the row, including the inputs) ────
+// Taps still focus inputs; a clear horizontal drag becomes a swipe. Swipe left
+// past threshold deletes the set (slide-out); swipe right toggles a drop set.
 const gesture = { active: false };
 let longPressTimer = null;
+const SWIPE = { DECIDE: 10, DELETE: 72, DROP: 58, HINT: 22, MAX: 130 };
 
 awBody.addEventListener('pointerdown', e => {
-  // Reorder-mode drag
   if (reordering) {
     const card = e.target.closest('.reorder-card');
     if (card) startReorderDrag(e, card);
     return;
   }
-  // Long-press on an exercise header → reorder mode
   const header = e.target.closest('.ex-block-header');
   if (header && !e.target.closest('button')) {
     longPressTimer = setTimeout(() => { longPressTimer = null; enterReorderMode(); }, 400);
   }
-  // Swipe on a set row (not from inputs/buttons)
   const row = e.target.closest('.set-row');
-  if (!row || e.target.closest('input,button')) return;
+  // Allow swipe to begin on inputs too — only the check button is excluded so
+  // its completion tap is never hijacked.
+  if (!row || e.target.closest('.set-check') || row.classList.contains('removing')) return;
   Object.assign(gesture, {
     active: true, row, startX: e.clientX, startY: e.clientY,
     pointerId: e.pointerId, decided: false, horizontal: false, dx: 0,
+    onInput: !!e.target.closest('.set-input'),
   });
 });
 
 awBody.addEventListener('pointermove', e => {
   if (longPressTimer !== null) {
-    const dx = Math.abs(e.movementX || 0), dy = Math.abs(e.movementY || 0);
-    if (dx > 8 || dy > 8) { clearTimeout(longPressTimer); longPressTimer = null; }
+    if (Math.abs(e.movementX || 0) > 8 || Math.abs(e.movementY || 0) > 8) { clearTimeout(longPressTimer); longPressTimer = null; }
   }
   if (!gesture.active) return;
   const dx = e.clientX - gesture.startX;
   const dy = e.clientY - gesture.startY;
-  if (!gesture.decided && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+  if (!gesture.decided && (Math.abs(dx) > SWIPE.DECIDE || Math.abs(dy) > SWIPE.DECIDE)) {
     gesture.decided = true;
-    gesture.horizontal = Math.abs(dx) > Math.abs(dy) * 1.5;
+    gesture.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
     if (gesture.horizontal) {
       try { gesture.row.setPointerCapture?.(gesture.pointerId); } catch(_) {}
+      if (gesture.onInput) document.activeElement?.blur?.();   // drop the caret when a swipe wins
+      gesture.row.classList.add('snapping');                    // ensure no transition lag mid-drag
+      gesture.row.classList.remove('snapping');
+    } else {
+      gesture.active = false;                                   // vertical → let the list scroll
+      return;
     }
   }
   if (gesture.decided && gesture.horizontal) {
-    gesture.dx = Math.max(-90, Math.min(90, dx));
-    gesture.row.style.transform = `translateX(${gesture.dx}px)`;
+    // light resistance past MAX so it never flies off
+    let d = dx;
+    if (Math.abs(d) > SWIPE.MAX) d = Math.sign(d) * (SWIPE.MAX + (Math.abs(d) - SWIPE.MAX) * 0.25);
+    gesture.dx = d;
+    gesture.row.style.transform = `translateX(${d}px)`;
+    gesture.row.classList.toggle('swipe-del',  d <= -SWIPE.HINT);
+    gesture.row.classList.toggle('swipe-drop', d >=  SWIPE.HINT);
     if (e.cancelable) e.preventDefault();
   }
 });
@@ -648,31 +697,31 @@ function endSwipe(e) {
   const { row, dx, horizontal } = gesture;
   gesture.active = false;
   if (!horizontal) return;
-  row.classList.add('snapping');
-  row.style.transform = '';
-  setTimeout(() => row.classList.remove('snapping'), 180);
-  if (e.type === 'pointercancel') return;
-
+  row.classList.remove('swipe-del', 'swipe-drop');
   const ei = row.dataset.ei, setId = row.dataset.setId;
-  if (dx < -60) revealDelete(row, ei, setId);
-  else if (dx > 60) toggleDropSet(ei, setId);
+
+  if (e.type !== 'pointercancel' && dx <= -SWIPE.DELETE) {
+    slideOutDelete(row, ei, setId);
+    return;
+  }
+  if (e.type !== 'pointercancel' && dx >= SWIPE.DROP) {
+    toggleDropSet(ei, setId);
+  }
+  snapBack(row);
 }
 awBody.addEventListener('pointerup', endSwipe);
 awBody.addEventListener('pointercancel', endSwipe);
 
-// Swipe-left reveals a red Delete in the check cell for 3s; tap it to confirm.
-function revealDelete(row, ei, setId) {
-  const btn = row.querySelector('.set-check');
-  if (!btn || btn.classList.contains('as-delete')) return;
-  const orig = btn.textContent;
-  btn.classList.add('as-delete');
-  btn.textContent = '✕';
-  setTimeout(() => {
-    if (!btn.isConnected) return;
-    btn.classList.remove('as-delete');
-    const { set } = findSet(ei, setId);
-    btn.textContent = set?.done ? '✓' : (orig === '✕' ? '' : orig);
-  }, 3000);
+function snapBack(row) {
+  row.classList.add('snapping');
+  row.style.transform = '';
+  setTimeout(() => row.classList.remove('snapping'), 200);
+}
+
+function slideOutDelete(row, ei, setId) {
+  row.classList.add('removing');
+  row.style.transform = 'translateX(-110%)';
+  setTimeout(() => deleteSet(ei, setId), 210);
 }
 
 // Reorder-mode dragging
@@ -802,6 +851,7 @@ async function saveWorkout() {
   await clearActiveSessionStore();
   document.getElementById('workoutSummary').classList.remove('visible');
   document.getElementById('activeWorkout').classList.remove('visible');
+  unfitActiveWorkout();
   activeSession = null;
   document.getElementById('miniBar').classList.remove('visible');
   renderDashboard();
@@ -817,6 +867,7 @@ function cancelWorkout() {
   document.getElementById('awTimer').style.display = '';
   document.getElementById('workoutSummary').classList.remove('visible');
   document.getElementById('activeWorkout').classList.remove('visible');
+  unfitActiveWorkout();
   document.getElementById('miniBar').classList.remove('visible');
 }
 
@@ -839,19 +890,35 @@ function playChime() {
   if (!audioCtx) return;
   const play = () => {
     try {
+      // Loud, attention-grabbing alarm: two urgent triads through a limiter so
+      // it's as loud as possible without clipping. (iOS still respects the
+      // physical mute switch — nothing JS can do about that.)
+      const comp = audioCtx.createDynamicsCompressor();
+      comp.threshold.value = -8; comp.ratio.value = 12; comp.attack.value = 0.002; comp.release.value = 0.1;
+      comp.connect(audioCtx.destination);
+      const master = audioCtx.createGain();
+      master.gain.value = 1.0;
+      master.connect(comp);
+
       const now = audioCtx.currentTime;
-      [880, 1100, 1320].forEach((freq, i) => {
-        const osc  = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        const t = now + i * 0.18;
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.5, t + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
-        osc.connect(gain).connect(audioCtx.destination);
-        osc.start(t);
-        osc.stop(t + 0.19);
+      const beeps = [0, 0.16, 0.32, 0.62, 0.78, 0.94]; // two triads
+      const freqs = [988, 1319, 1568, 988, 1319, 1568];
+      beeps.forEach((offset, i) => {
+        const t = now + offset;
+        // layer a sine + square for a fuller, louder tone
+        ['sine', 'square'].forEach((type, j) => {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.value = freqs[i];
+          const peak = type === 'square' ? 0.28 : 0.6;
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(peak, t + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+          osc.connect(g).connect(master);
+          osc.start(t);
+          osc.stop(t + 0.16);
+        });
       });
     } catch (_) {}
   };
@@ -871,7 +938,7 @@ function startRest(secs = 60, exName = '') {
   db.set(STORE, 'active-rest', { endsAt: restEndsAt, totalSecs: secs, exName });
   const bar = document.getElementById('restBar');
   bar.classList.add('visible');
-  bar.classList.remove('flash');
+  bar.classList.remove('flash', 'done-state');
   document.getElementById('restBarName').textContent = exName ? `Rest — ${exName}` : 'Rest';
   tickRest();
   restTimer = setInterval(tickRest, 250);
@@ -889,10 +956,15 @@ function finishRest() {
   restFiredChime = true;
   clearInterval(restTimer);
   updateRestDisplay(0);
-  document.getElementById('restBar')?.classList.add('flash');
+  const bar = document.getElementById('restBar');
+  if (bar) {
+    bar.classList.add('flash', 'done-state');            // pulses until dismissed
+    document.getElementById('restBarName').textContent = '✅ Rest done — next set!';
+  }
   playChime();
-  try { navigator.vibrate?.([200,100,200]); } catch(_) {}
-  setTimeout(skipRest, 2000);
+  try { navigator.vibrate?.([300,120,300,120,300]); } catch(_) {}
+  // NB: intentionally NOT auto-dismissed — the bar stays visible/pulsing until
+  // the user hits Skip or checks off the next set (which restarts the timer).
 }
 
 function updateRestDisplay(remaining) {
@@ -911,7 +983,7 @@ function skipRest() {
   clearInterval(restTimer);
   restEndsAt = null;
   const bar = document.getElementById('restBar');
-  bar?.classList.remove('visible', 'flash');
+  bar?.classList.remove('visible', 'flash', 'done-state');
   db.set(STORE, 'active-rest', null);
 }
 
@@ -1180,6 +1252,7 @@ document.getElementById('templateNameSave').onclick = async () => {
     activeSession = null;
     clearActiveSessionStore();
     document.getElementById('activeWorkout').classList.remove('visible');
+  unfitActiveWorkout();
     document.getElementById('awTimer').style.display = '';
     renderDashboard();
   } else {
