@@ -60,8 +60,11 @@ export function normName(s) {
     .trim();
 }
 
+// What the app can do — so the coach can answer "how do I…" questions.
+const APP_CAPABILITIES = `This app (the user's Hevy replacement) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + Hevy CSV import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it. Nutrition/calories live in a separate CalorieAI app (you can't see that data). Habits & reminders live in a separate Habits app (basic status below).`;
+
 // ── Context builder → system prompt ───────────────────────────────────────────
-export function buildCoachContext(sessions, templates, records, streak, allExercises) {
+export function buildCoachContext(sessions, templates, records, streak, allExercises, habits) {
   const byCat = {};
   for (const e of allExercises) (byCat[e.category] ||= []).push(e.name);
   const allowed = Object.entries(byCat)
@@ -91,12 +94,21 @@ export function buildCoachContext(sessions, templates, records, streak, allExerc
     `- ${t.name}: ${t.exercises.map(e => e.name).join(', ')}`
   ).join('\n');
 
-  return `You are an expert strength & hypertrophy coach living inside the user's workout app. The user is an experienced lifter in the UK — all weights are in KILOGRAMS (kg), never pounds or dollars.
+  const habitLine = habits && habits.list?.length
+    ? `Tracked habits: ${habits.list.map(h => h.name).join(', ')}. Done today: ${habits.doneToday || 0}/${habits.list.length}.`
+    : 'No habits tracked (or the Habits app is empty).';
+
+  return `You are an expert strength & hypertrophy coach and training assistant living inside the user's workout app. The user is an experienced lifter in the UK — all weights are in KILOGRAMS (kg), never pounds or dollars.
 
 HOW TO RESPOND
-- Be concise and practical. Give a clear recommendation, not an exhaustive survey.
-- For questions, advice, progression (next weights/reps, deloads, weak points), or program review: reply in plain text.
-- Only call the draft_routine tool when the user actually wants a workout/day created or "what should I train today". Otherwise don't call it.
+- Answer ANY question the user asks — training, technique/form, programming, progression, recovery, nutrition-for-lifters, or how to use this app. Always give a real answer in plain text; never refuse a normal training/health question or reply with just a routine when they asked something else.
+- Be concise and practical: a clear recommendation, not an exhaustive survey.
+- Use the user's own history below to personalise (their lifts, PBs, recent sessions, streak).
+- ONLY call the draft_routine tool when the user actually wants a workout or program created, or asks "what should I train today". For everything else, reply with text and do not call the tool.
+
+APP CAPABILITIES (for "how do I…" questions)
+${APP_CAPABILITIES}
+${habitLine}
 
 DRAFTING RULES
 - Only use exercise names from the ALLOWED EXERCISES list below (close/fuzzy is fine — the app remaps; anything genuinely new becomes a custom exercise).
@@ -126,7 +138,14 @@ export async function assembleContext({ loadSessions, getTemplates, getAllExerci
   const records   = buildRecords(sessions);
   const streak    = computeStreak(sessions, await getStreakSettings());
   const allEx     = await getAllExercises();
-  return buildCoachContext(sessions, templates, records, streak, allEx);
+  // Cross-app: read the Habits module's tracker (same Supabase-synced db).
+  let habits = null;
+  try {
+    const list = (await db.get('habits', 'habits-list')) || [];
+    const done = (await db.get('habits', `done-${new Date().toISOString().slice(0,10)}`)) || [];
+    habits = { list, doneToday: done.length };
+  } catch (_) {}
+  return buildCoachContext(sessions, templates, records, streak, allEx, habits);
 }
 
 // ── Validate/normalise a model-produced routine into the template contract ────
@@ -187,6 +206,25 @@ export async function validateRoutine(routine, { getAllExercises, guessCategory 
   return out;
 }
 
+// The Messages API requires the first message to be role 'user' and generally
+// dislikes empty content — malformed histories were a source of silent 400s on
+// custom prompts. Normalise: drop leading non-user + empties, merge consecutive
+// same-role turns, keep only the last ~20 turns.
+function sanitizeMessages(msgs) {
+  const out = [];
+  for (const m of (msgs || [])) {
+    const content = String(m?.content ?? '').trim();
+    if (!content) continue;
+    if (!out.length && m.role !== 'user') continue;
+    if (out.length && out[out.length - 1].role === m.role) {
+      out[out.length - 1].content += '\n\n' + content;
+    } else {
+      out.push({ role: m.role, content });
+    }
+  }
+  return out.slice(-20);
+}
+
 // ── The API call ──────────────────────────────────────────────────────────────
 // apiMessages: [{role:'user'|'assistant', content:string}]
 // Returns { text, routine|null, error|null }.
@@ -194,13 +232,16 @@ export async function callCoach({ apiMessages, system, forceTool = false, getKey
   const key = await getKey();
   if (!key) return { error: 'nokey' };
 
+  const messages = sanitizeMessages(apiMessages);
+  if (!messages.length) return { error: 'api', detail: 'no message' };
+
   const body = {
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: forceTool ? 1600 : 2000,   // more room for detailed chat answers
     system,
     tools: [DRAFT_ROUTINE_TOOL],
     tool_choice: forceTool ? { type: 'tool', name: 'draft_routine' } : { type: 'auto' },
-    messages: apiMessages,
+    messages,
   };
 
   let res;

@@ -232,9 +232,18 @@
     .ex-rest-icon  { font-size:0.85rem; }
     .ex-rest-label { font-size:0.75rem; color:var(--text-muted); flex:1; }
     .ex-rest-value {
-      font-size:0.85rem; font-weight:700; min-width:42px; text-align:center;
+      font-size:0.85rem; font-weight:700; min-width:48px; text-align:center;
       font-variant-numeric:tabular-nums; color:var(--blue);
+      background:var(--surface); border:1px solid rgba(79,195,247,0.35); border-radius:8px;
+      padding:5px 6px; cursor:pointer; -webkit-tap-highlight-color:transparent;
     }
+    .rest-preset-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .rest-preset {
+      padding:14px 0; border:1px solid rgba(255,255,255,0.12); border-radius:10px;
+      background:var(--surface2); color:var(--text); font-size:0.95rem; font-weight:700;
+      cursor:pointer; -webkit-tap-highlight-color:transparent;
+    }
+    .rest-preset.active { background:var(--blue); color:#000; border-color:var(--blue); }
     .ex-rest-step {
       width:28px; height:28px; border-radius:8px; border:1px solid rgba(255,255,255,0.15);
       background:var(--surface); color:var(--text); font-size:1rem; cursor:pointer;
@@ -778,6 +787,10 @@
       <label class="form-label">Muscle Group</label>
       <select class="form-input" id="customExCat"></select>
     </div>
+    <div class="form-group">
+      <label class="form-label">How do you track it?</label>
+      <select class="form-input" id="customExType"></select>
+    </div>
     <div class="modal-btns">
       <button class="btn btn-g" id="customExCancel">Cancel</button>
       <button class="btn btn-p" id="customExSave">Add</button>
@@ -844,6 +857,46 @@
     <div class="modal-btns">
       <button class="btn btn-g" id="coachKeyCancel">Cancel</button>
       <button class="btn btn-p" id="coachKeySave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Rest-timer preset sheet ── -->
+<div class="modal-backdrop" id="restSheet">
+  <div class="modal">
+    <p class="modal-title">⏱ Rest timer</p>
+    <div class="rest-preset-grid" id="restPresetGrid">
+      <button class="rest-preset" data-secs="0">Off</button>
+      <button class="rest-preset" data-secs="30">0:30</button>
+      <button class="rest-preset" data-secs="45">0:45</button>
+      <button class="rest-preset" data-secs="60">1:00</button>
+      <button class="rest-preset" data-secs="90">1:30</button>
+      <button class="rest-preset" data-secs="120">2:00</button>
+      <button class="rest-preset" data-secs="150">2:30</button>
+      <button class="rest-preset" data-secs="180">3:00</button>
+      <button class="rest-preset" data-secs="240">4:00</button>
+    </div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn btn-g" id="restSheetCancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Edit workout date/time modal ── -->
+<div class="modal-backdrop" id="hdDateModal">
+  <div class="modal">
+    <p class="modal-title">Edit date & time</p>
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input class="form-input" id="hdDateInput" type="date">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Time</label>
+      <input class="form-input" id="hdTimeInput" type="time">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-g" id="hdDateCancel">Cancel</button>
+      <button class="btn btn-p" id="hdDateSave">Save</button>
     </div>
   </div>
 </div>

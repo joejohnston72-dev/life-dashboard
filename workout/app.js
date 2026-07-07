@@ -29,6 +29,34 @@ const fmtTime = secs => {
   const m = Math.floor(secs / 60), s = secs % 60;
   return m + ':' + String(s).padStart(2,'0');
 };
+const fmtRest = secs => (secs <= 0 ? 'Off' : fmtTime(secs));   // rest timer can be disabled
+
+// ── Exercise tracking types ───────────────────────────────────────────────────
+// Which fields a set records. 'time' is stored in set.duration (seconds),
+// 'distance' in set.distance (km). weight/reps as before.
+const LOGTYPES = {
+  weighted:   { cols: ['weight', 'reps'],     head: ['kg', 'Reps'],  label: 'Weight & reps' },
+  bodyweight: { cols: ['reps'],               head: ['Reps'],        label: 'Reps only (bodyweight)' },
+  duration:   { cols: ['time'],               head: ['Time'],        label: 'Time / hold' },
+  cardio:     { cols: ['distance', 'time'],   head: ['km', 'Time'],  label: 'Distance & time (cardio)' },
+};
+const DURATION_NAMES = /plank|hold|wall sit|dead hang|hang|l-sit|hollow/i;
+// Infer a tracking type for a built-in / legacy exercise that has none stored.
+// Cardio defaults to time (matches "25min stairs/cycle"); distance+time ('cardio')
+// is only used when the user explicitly picks it for a new exercise.
+function exLogType(name, category) {
+  if (category === 'Cardio') return 'duration';
+  if (DURATION_NAMES.test(name || '')) return 'duration';
+  return 'weighted';
+}
+const resolveLogType = ex => LOGTYPES[ex?.logType] ? ex.logType : exLogType(ex?.name, ex?.category);
+const fmtDuration = secs => { if (!secs) return ''; const m = Math.floor(secs/60), s = secs%60; return m + ':' + String(s).padStart(2,'0'); };
+function parseTime(str) {
+  if (str == null || str === '') return 0;
+  str = String(str).trim();
+  if (str.includes(':')) { const [m, s] = str.split(':'); return (parseInt(m)||0)*60 + (parseInt(s)||0); }
+  return parseInt(str) || 0;   // bare number = seconds
+}
 const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
 
 function parseToDate(str) {
@@ -169,10 +197,12 @@ async function startEmptyWorkout(prefill = null) {
   const past = await loadSessions();
   sessionRecords = buildRecords(past);
 
+  const allEx = await getAllExercises();
   const exercises = (prefill?.exercises || []).map(e => {
     const prev = prevPerfFrom(past, e.name);
+    const logType = e.logType || prev?.logType || allEx.find(x => x.name === e.name)?.logType || exLogType(e.name, e.category);
     return {
-      id: uid(), name: e.name, category: e.category,
+      id: uid(), name: e.name, category: e.category, logType,
       restTime: e.restTime ?? prev?.restTime ?? 60,
       notes: prev?.notes || '',
       prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
@@ -299,13 +329,32 @@ function findSet(ei, setId) {
   return { ex, set: ex.sets[si], si };
 }
 
+function setPrevText(lt, prev) {
+  if (!prev) return '—';
+  switch (lt) {
+    case 'bodyweight': return `${prev.reps || 0} reps`;
+    case 'duration':   return fmtDuration(prev.duration) || '—';
+    case 'cardio':     return `${prev.distance || 0}km ${fmtDuration(prev.duration) || ''}`.trim();
+    default:           return `${fmtKg(prev.weight)}×${prev.reps}`;
+  }
+}
+function setInputCell(col, set, ex, ei, prev) {
+  const common = `data-ei="${ei}" data-set-id="${set.id}"`;
+  if (col === 'weight')
+    return `<td><input class="set-input" type="number" min="0" step="0.5" value="${set.weight || ''}" placeholder="${set.tW ?? 0}" inputmode="decimal" ${common} data-field="weight"></td>`;
+  if (col === 'reps')
+    return `<td><input class="set-input" type="number" min="0" step="1" value="${set.reps || ''}" placeholder="${set.tR ?? 0}" inputmode="numeric" ${common} data-field="reps"></td>`;
+  if (col === 'distance')
+    return `<td><input class="set-input" type="number" min="0" step="0.01" value="${set.distance || ''}" placeholder="${prev?.distance ?? 0}" inputmode="decimal" ${common} data-field="distance"></td>`;
+  if (col === 'time')
+    return `<td><input class="set-input" type="text" value="${set.duration ? fmtDuration(set.duration) : ''}" placeholder="${prev?.duration ? fmtDuration(prev.duration) : 'm:ss'}" inputmode="numeric" ${common} data-field="time"></td>`;
+  return '<td></td>';
+}
 function buildSetRow(ex, ei, set) {
   const si = ex.sets.indexOf(set);
+  const lt = resolveLogType(ex);
+  const cfg = LOGTYPES[lt];
   const prev = ex.prevSets?.[si] ?? null;
-  const isCardio = ex.category === 'Cardio';
-  const prevText = prev
-    ? (isCardio ? `${prev.reps} min` : `${fmtKg(prev.weight)}×${prev.reps}`)
-    : '—';
   const tr = document.createElement('tr');
   tr.className = 'set-row'
     + (set.done ? ' done' : '')
@@ -315,13 +364,8 @@ function buildSetRow(ex, ei, set) {
   tr.dataset.setId = set.id;
   tr.innerHTML = `
     <td class="set-num">${si + 1}</td>
-    <td class="set-prev">${prevText}</td>
-    <td><input class="set-input" type="number" min="0" step="0.5"
-          value="${set.weight || ''}" placeholder="${isCardio ? '—' : (set.tW ?? 0)}" inputmode="decimal"
-          data-ei="${ei}" data-set-id="${set.id}" data-field="weight"></td>
-    <td><input class="set-input" type="number" min="0" step="1"
-          value="${set.reps || ''}" placeholder="${set.tR ?? 0}${isCardio ? ' min' : ''}" inputmode="numeric"
-          data-ei="${ei}" data-set-id="${set.id}" data-field="reps"></td>
+    <td class="set-prev">${setPrevText(lt, prev)}</td>
+    ${cfg.cols.map(c => setInputCell(c, set, ex, ei, prev)).join('')}
     <td class="set-check-cell"><button class="set-check" data-ei="${ei}" data-set-id="${set.id}">${set.done ? '✓' : ''}</button></td>
   `;
   return tr;
@@ -332,6 +376,9 @@ function buildExerciseBlock(ex, ei) {
   block.className = 'ex-block';
   block.dataset.ei = ei;
   const color = CATEGORY_COLORS[ex.category] || '#888';
+  const cfg = LOGTYPES[resolveLogType(ex)];
+  const headCols = cfg.head.map(h => `<th>${h}</th>`).join('');
+  const colspan = cfg.cols.length + 3;
 
   block.innerHTML = `
     <div class="ex-block-header" data-ei="${ei}">
@@ -345,16 +392,16 @@ function buildExerciseBlock(ex, ei) {
       <span class="ex-rest-icon">⏱</span>
       <span class="ex-rest-label">Rest timer</span>
       <button class="ex-rest-step" data-ei="${ei}" data-delta="-15">−</button>
-      <span class="ex-rest-value" id="restval-${ei}">${fmtTime(ex.restTime ?? 60)}</span>
+      <button class="ex-rest-value" data-ei="${ei}" id="restval-${ei}">${fmtRest(ex.restTime ?? 60)}</button>
       <button class="ex-rest-step" data-ei="${ei}" data-delta="15">+</button>
     </div>
     <input class="ex-notes-input" placeholder="Notes…" value="${esc(ex.notes||'')}" data-ei="${ei}" data-field="notes">
     <table class="sets-table">
-      <thead><tr><th>#</th><th>Previous</th><th>kg</th><th>Reps</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Previous</th>${headCols}<th></th></tr></thead>
       <tbody class="sets-body" data-ei="${ei}"></tbody>
     </table>
     <table class="sets-table"><tbody>
-      <tr class="add-set-row"><td colspan="5">
+      <tr class="add-set-row"><td colspan="${colspan}">
         <button class="add-set-mini" data-ei="${ei}">+ Add Set</button>
       </td></tr>
     </tbody></table>
@@ -389,8 +436,11 @@ awBody.addEventListener('input', e => {
     const { ei, setId, field } = t.dataset;
     const { ex, set } = findSet(ei, setId);
     if (!set) return;
-    set[field] = field === 'reps' ? parseInt(t.value)||0 : parseFloat(t.value)||0;
-    set.touched[field] = true;
+    if (field === 'reps')          set.reps = parseInt(t.value) || 0;
+    else if (field === 'distance') set.distance = parseFloat(t.value) || 0;
+    else if (field === 'time')     set.duration = parseTime(t.value);
+    else                           set[field] = parseFloat(t.value) || 0;   // weight
+    (set.touched ||= {})[field] = true;
     if (field === 'weight') queueSanityCheck(ex, set, t.closest('.set-row'));
     saveSoon();
   } else if (t.classList.contains('ex-notes-input')) {
@@ -432,14 +482,41 @@ awBody.addEventListener('click', e => {
     const ei = parseInt(step.dataset.ei);
     const ex = activeSession.exercises[ei];
     ex.restTime = Math.max(0, (ex.restTime ?? 60) + parseInt(step.dataset.delta));
-    document.getElementById('restval-' + ei).textContent = fmtTime(ex.restTime);
+    document.getElementById('restval-' + ei).textContent = fmtRest(ex.restTime);
     saveSoon();
     return;
   }
+  const restVal = e.target.closest('.ex-rest-value');
+  if (restVal) { openRestSheet(parseInt(restVal.dataset.ei)); return; }
   const cueBtn = e.target.closest('.ex-cue-btn');
   if (cueBtn) { showCues(cueBtn.dataset.cue); return; }
   const menuBtn = e.target.closest('.ex-menu-btn');
   if (menuBtn) { openExMenuSheet(parseInt(menuBtn.dataset.ei)); return; }
+});
+
+// ── Rest-timer preset sheet (tap the value; includes Off) ─────────────────────
+let restSheetEi = null;
+function openRestSheet(ei) {
+  restSheetEi = ei;
+  const cur = activeSession.exercises[ei]?.restTime ?? 60;
+  document.querySelectorAll('#restPresetGrid .rest-preset').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.secs) === cur));
+  document.getElementById('restSheet').classList.add('open');
+}
+document.getElementById('restSheetCancel').onclick = () => document.getElementById('restSheet').classList.remove('open');
+document.getElementById('restSheet').addEventListener('click', e => {
+  if (e.target === document.getElementById('restSheet')) document.getElementById('restSheet').classList.remove('open');
+});
+document.querySelectorAll('#restPresetGrid .rest-preset').forEach(btn => {
+  btn.onclick = () => {
+    if (restSheetEi == null || !activeSession) return;
+    const secs = parseInt(btn.dataset.secs);
+    activeSession.exercises[restSheetEi].restTime = secs;
+    const el = document.getElementById('restval-' + restSheetEi);
+    if (el) el.textContent = fmtRest(secs);
+    document.getElementById('restSheet').classList.remove('open');
+    saveSoon();
+  };
 });
 
 function toggleSetDone(ei, setId, rowEl) {
@@ -447,24 +524,37 @@ function toggleSetDone(ei, setId, rowEl) {
   if (!set) return;
   set.done = !set.done;
 
+  const lt = resolveLogType(ex);
+  set.touched ||= {};
   if (set.done) {
     // Commit ghosts: an empty checked set means "did the target"
-    const wInput = rowEl.querySelector('[data-field="weight"]');
-    const rInput = rowEl.querySelector('[data-field="reps"]');
-    if (!set.weight && !set.touched.weight && set.tW) { set.weight = set.tW; wInput.value = set.tW; }
-    if (!set.reps   && !set.touched.reps   && set.tR) { set.reps   = set.tR; rInput.value = set.tR; }
+    const commit = (field, ghost) => {
+      if (ghost == null || ghost === 0 || ghost === '') return;
+      if (field === 'time') {
+        if (!set.duration && !set.touched.time) { set.duration = ghost; const i = rowEl.querySelector('[data-field="time"]'); if (i) i.value = fmtDuration(ghost); }
+      } else if (!set[field] && !set.touched[field]) {
+        set[field] = ghost; const i = rowEl.querySelector(`[data-field="${field}"]`); if (i) i.value = ghost;
+      }
+    };
+    const prev = ex.prevSets?.[si] ?? null;
+    if (lt === 'weighted')   { commit('weight', set.tW); commit('reps', set.tR); }
+    else if (lt === 'bodyweight') commit('reps', set.tR ?? prev?.reps);
+    else if (lt === 'duration')   commit('time', prev?.duration);
+    else if (lt === 'cardio')   { commit('distance', prev?.distance); commit('time', prev?.duration); }
 
-    // Auto-fill the next set's weight if untouched, then jump focus to it so the
-    // keyboard stays up and the user can log the next set without re-tapping.
+    // Auto-fill the next set + jump focus so the keyboard stays up (weighted flow).
     const next = ex.sets[si + 1];
     if (next && !next.done) {
       const nextRow = rowEl.parentElement.querySelector(`.set-row[data-set-id="${next.id}"]`);
-      const nWeight = nextRow?.querySelector('[data-field="weight"]');
-      if (nWeight && !next.touched.weight && set.weight) { next.weight = set.weight; nWeight.value = set.weight; }
-      // focus the reps of the next set (weight is pre-filled) — synchronous so iOS keeps the keyboard open
-      const nReps = nextRow?.querySelector('[data-field="reps"]');
-      const target = nReps || nWeight;
-      if (target) { target.focus({ preventScroll: true }); try { target.select(); } catch(_) {} }
+      if (lt === 'weighted') {
+        const nWeight = nextRow?.querySelector('[data-field="weight"]');
+        if (nWeight && !next.touched?.weight && set.weight) { next.weight = set.weight; nWeight.value = set.weight; }
+        const target = nextRow?.querySelector('[data-field="reps"]') || nWeight;
+        if (target) { target.focus({ preventScroll: true }); try { target.select(); } catch(_) {} }
+      } else {
+        const target = nextRow?.querySelector('.set-input');
+        if (target) { target.focus({ preventScroll: true }); try { target.select(); } catch(_) {} }
+      }
     }
 
     // PB detection
@@ -1152,8 +1242,12 @@ async function addExerciseToSession(name, category) {
   const past = await loadSessions();
   const prev = prevPerfFrom(past, name);
   const prevSets = prev?.sets || null;
+  // logType: prefer the previous session's / custom exercise's stored type, else infer.
+  const all = await getAllExercises();
+  const def = all.find(e => e.name === name);
+  const logType = prev?.logType || def?.logType || exLogType(name, category);
   activeSession.exercises.push({
-    id: uid(), name, category,
+    id: uid(), name, category, logType,
     notes: prev?.notes || '',
     restTime: prev?.restTime ?? 60,
     prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
@@ -1176,6 +1270,8 @@ function prevPerfFrom(sessions, exerciseName) {
 function openCustomExModal() {
   const sel = document.getElementById('customExCat');
   sel.innerHTML = CATEGORIES.map(c => `<option>${c}</option>`).join('');
+  const typeSel = document.getElementById('customExType');
+  typeSel.innerHTML = Object.entries(LOGTYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
   document.getElementById('customExName').value = '';
   document.getElementById('customExModal').classList.add('open');
 }
@@ -1183,9 +1279,10 @@ document.getElementById('customExCancel').onclick = () => document.getElementByI
 document.getElementById('customExSave').onclick = async () => {
   const name = document.getElementById('customExName').value.trim();
   if (!name) return;
-  const cat  = document.getElementById('customExCat').value;
+  const cat     = document.getElementById('customExCat').value;
+  const logType = document.getElementById('customExType').value || 'weighted';
   const custom = (await db.get(STORE, 'exercises-custom')) || [];
-  custom.push({ id: uid(), name, category: cat, custom: true });
+  custom.push({ id: uid(), name, category: cat, logType, custom: true });
   await db.set(STORE, 'exercises-custom', custom);
   document.getElementById('customExModal').classList.remove('open');
   await addExerciseToSession(name, cat);
@@ -1240,8 +1337,8 @@ document.getElementById('templateNameSave').onclick = async () => {
   templates.push({
     id: uid(), name,
     exercises: activeSession.exercises.map(e => ({
-      name: e.name, category: e.category, restTime: e.restTime ?? 60,
-      sets: e.sets.map(s => ({ weight: s.weight || s.tW || 0, reps: s.reps || s.tR || 0, type: s.type })),
+      name: e.name, category: e.category, restTime: e.restTime ?? 60, logType: resolveLogType(e),
+      sets: e.sets.map(s => ({ weight: s.weight || s.tW || 0, reps: s.reps || s.tR || 0, distance: s.distance || 0, duration: s.duration || 0, type: s.type })),
     })),
   });
   await db.set(STORE, 'templates', templates);
@@ -1530,6 +1627,13 @@ async function renderHistory() {
 }
 
 // ── History detail ────────────────────────────────────────────────────────────
+function hdSetVal(ex, st) {
+  const lt = resolveLogType(ex);
+  if (lt === 'bodyweight') return `${st.reps || 0} reps`;
+  if (lt === 'duration')   return st.duration ? fmtDuration(st.duration) : (st.reps ? `${st.reps} min` : '—');
+  if (lt === 'cardio')     return `${st.distance || 0} km · ${st.duration ? fmtDuration(st.duration) : (st.reps ? st.reps + ' min' : '0:00')}`;
+  return `${fmtKg(st.weight)} kg × ${st.reps} reps`;
+}
 async function openHistoryDetail(sessionId) {
   const s = await db.get(STORE, 'session-' + sessionId);
   if (!s) return;
@@ -1544,9 +1648,9 @@ async function openHistoryDetail(sessionId) {
 
   body.innerHTML = `
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-      <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;min-width:80px;text-align:center">
+      <div class="stat-box" id="hdDateBox" style="background:var(--surface);border-radius:10px;padding:10px 14px;min-width:80px;text-align:center;cursor:pointer">
         <div class="stat-val">${fmtDate(s.date||s.startTime||'')}</div>
-        <div class="stat-label">Date</div>
+        <div class="stat-label">Date ✎</div>
       </div>
       <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center">
         <div class="stat-val">${fmtTime(s.duration||0)}</div>
@@ -1567,10 +1671,10 @@ async function openHistoryDetail(sessionId) {
       <div style="background:var(--surface);border-radius:12px;padding:14px;margin-bottom:10px;border-left:4px solid ${CATEGORY_COLORS[ex.category]||'#4fc3f7'}">
         <div style="font-size:0.95rem;font-weight:700;margin-bottom:10px">${esc(ex.name)}</div>
         ${ex.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);margin:-6px 0 8px">📝 ${esc(ex.notes)}</div>` : ''}
-        ${(ex.sets||[]).filter(st => st.done || st.weight || st.reps).map((st,i) => `
+        ${(ex.sets||[]).filter(st => st.done || st.weight || st.reps || st.duration || st.distance).map((st,i) => `
           <div class="hd-set-row">
             <span class="hd-set-num">${i+1}${st.type === 'dropset' ? '<span style="color:#ce93d8"> D</span>' : st.type === 'warmup' ? '<span style="color:#fbbf24"> W</span>' : ''}</span>
-            <span class="hd-set-val">${ex.category === 'Cardio' ? `${st.reps} min` : `${fmtKg(st.weight)} kg × ${st.reps} reps`}</span>
+            <span class="hd-set-val">${hdSetVal(ex, st)}</span>
             ${st.rpe ? `<span style="color:var(--text-muted);margin-left:auto;font-size:0.75rem">RPE ${st.rpe}</span>` : ''}
           </div>
         `).join('')}
@@ -1590,16 +1694,53 @@ async function openHistoryDetail(sessionId) {
   };
   body.appendChild(tplBtn);
 
+  // Tap the Date box to edit the workout's date & time
+  document.getElementById('hdDateBox').onclick = () => openDateEditor(sessionId, s);
+
   document.getElementById('historyDetail').classList.add('visible');
 }
+
+// ── Edit a past workout's date & time ─────────────────────────────────────────
+let hdEditSid = null;
+function openDateEditor(sessionId, s) {
+  hdEditSid = sessionId;
+  const d = parseToDate(s.startTime || s.date || '') || new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('hdDateInput').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.getElementById('hdTimeInput').value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  document.getElementById('hdDateModal').classList.add('open');
+}
+document.getElementById('hdDateCancel').onclick = () => document.getElementById('hdDateModal').classList.remove('open');
+document.getElementById('hdDateModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('hdDateModal')) document.getElementById('hdDateModal').classList.remove('open');
+});
+document.getElementById('hdDateSave').onclick = async () => {
+  const dateVal = document.getElementById('hdDateInput').value;   // YYYY-MM-DD
+  const timeVal = document.getElementById('hdTimeInput').value || '12:00';
+  if (!dateVal || !hdEditSid) return;
+  const s = await db.get(STORE, 'session-' + hdEditSid);
+  if (!s) return;
+  s.date = dateVal;
+  s.startTime = `${dateVal}T${timeVal}:00`;
+  if (s.duration) {
+    const end = new Date(`${dateVal}T${timeVal}:00`);
+    end.setSeconds(end.getSeconds() + s.duration);
+    s.endTime = end.toISOString();
+  }
+  await db.set(STORE, 'session-' + hdEditSid, s);
+  document.getElementById('hdDateModal').classList.remove('open');
+  await openHistoryDetail(hdEditSid);   // refresh the detail
+  renderHistory();
+  renderDashboard();
+};
 
 async function saveTemplate(name, exercises) {
   const templates = await getTemplates();
   templates.push({
     id: uid(), name,
     exercises: exercises.map(e => ({
-      name: e.name, category: e.category, restTime: e.restTime ?? 60,
-      sets: e.sets.filter(s => s.done||s.weight||s.reps).map(s => ({ weight: s.weight, reps: s.reps, type: s.type })),
+      name: e.name, category: e.category, restTime: e.restTime ?? 60, logType: resolveLogType(e),
+      sets: e.sets.filter(s => s.done||s.weight||s.reps||s.duration||s.distance).map(s => ({ weight: s.weight, reps: s.reps, distance: s.distance || 0, duration: s.duration || 0, type: s.type })),
     })),
   });
   await db.set(STORE, 'templates', templates);
