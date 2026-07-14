@@ -14,7 +14,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { height: 100%; }
+html { height: 100%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
   min-height: 100%;
@@ -97,4 +97,3 @@ body {
 /* Per-module accent borders */
 .tile--calories  { border-top: 3px solid var(--accent); }
 .tile--workout   { border-top: 3px solid #4fc3f7; }
-.tile--habits    { border-top: 3px solid #ce93d8; }

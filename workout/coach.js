@@ -61,10 +61,10 @@ export function normName(s) {
 }
 
 // What the app can do — so the coach can answer "how do I…" questions.
-const APP_CAPABILITIES = `This app (the user's Hevy replacement) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + Hevy CSV import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it. Nutrition/calories live in a separate CalorieAI app (you can't see that data). Habits & reminders live in a separate Habits app (basic status below).`;
+const APP_CAPABILITIES = `This app (the user's Hevy replacement) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + Hevy CSV import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it. Nutrition/calories live in a separate CalorieAI app (you can't see that data).`;
 
 // ── Context builder → system prompt ───────────────────────────────────────────
-export function buildCoachContext(sessions, templates, records, streak, allExercises, habits) {
+export function buildCoachContext(sessions, templates, records, streak, allExercises) {
   const byCat = {};
   for (const e of allExercises) (byCat[e.category] ||= []).push(e.name);
   const allowed = Object.entries(byCat)
@@ -94,10 +94,6 @@ export function buildCoachContext(sessions, templates, records, streak, allExerc
     `- ${t.name}: ${t.exercises.map(e => e.name).join(', ')}`
   ).join('\n');
 
-  const habitLine = habits && habits.list?.length
-    ? `Tracked habits: ${habits.list.map(h => h.name).join(', ')}. Done today: ${habits.doneToday || 0}/${habits.list.length}.`
-    : 'No habits tracked (or the Habits app is empty).';
-
   return `You are an expert strength & hypertrophy coach and training assistant living inside the user's workout app. The user is an experienced lifter in the UK — all weights are in KILOGRAMS (kg), never pounds or dollars.
 
 HOW TO RESPOND
@@ -108,7 +104,6 @@ HOW TO RESPOND
 
 APP CAPABILITIES (for "how do I…" questions)
 ${APP_CAPABILITIES}
-${habitLine}
 
 DRAFTING RULES
 - Only use exercise names from the ALLOWED EXERCISES list below (close/fuzzy is fine — the app remaps; anything genuinely new becomes a custom exercise).
@@ -138,14 +133,7 @@ export async function assembleContext({ loadSessions, getTemplates, getAllExerci
   const records   = buildRecords(sessions);
   const streak    = computeStreak(sessions, await getStreakSettings());
   const allEx     = await getAllExercises();
-  // Cross-app: read the Habits module's tracker (same Supabase-synced db).
-  let habits = null;
-  try {
-    const list = (await db.get('habits', 'habits-list')) || [];
-    const done = (await db.get('habits', `done-${new Date().toISOString().slice(0,10)}`)) || [];
-    habits = { list, doneToday: done.length };
-  } catch (_) {}
-  return buildCoachContext(sessions, templates, records, streak, allEx, habits);
+  return buildCoachContext(sessions, templates, records, streak, allEx);
 }
 
 // ── Validate/normalise a model-produced routine into the template contract ────

@@ -1,18 +1,13 @@
-const CACHE = 'life-dashboard-v26';
+const CACHE = 'life-dashboard-v27';
 const PRECACHE = [
   '/life-dashboard/',
   '/life-dashboard/index.html',
   '/life-dashboard/styles.css',
   '/life-dashboard/shared/db.js',
   '/life-dashboard/shared/supabase.js',
-  '/life-dashboard/shared/push.js',
   '/life-dashboard/shared/suggestions.js',
   '/life-dashboard/manifest.json',
   '/life-dashboard/icon.png',
-  '/life-dashboard/habits/index.html',
-  '/life-dashboard/habits/app.js',
-  '/life-dashboard/habits/manifest.json',
-  '/life-dashboard/habits/icon.png',
   '/life-dashboard/workout/index.html',
   '/life-dashboard/workout/app.js',
   '/life-dashboard/workout/exercises.js',
@@ -65,35 +60,5 @@ self.addEventListener('fetch', e => {
         return res;
       })
       .catch(() => caches.match(e.request))
-  );
-});
-
-// ── Push notifications ────────────────────────────────────────────────────────
-self.addEventListener('push', e => {
-  let data = { title: 'Reminder', body: '' };
-  try { data = e.data.json(); } catch (_) { if (e.data) data.body = e.data.text(); }
-  e.waitUntil(
-    self.registration.showNotification(data.title || 'Reminder', {
-      body: data.body || '',
-      icon: '/life-dashboard/icon.png',
-      badge: '/life-dashboard/icon.png',
-      tag: data.tag || undefined,
-      data: { url: data.url || '/life-dashboard/habits/' },
-      requireInteraction: false,
-      vibrate: [200, 100, 200],
-    })
-  );
-});
-
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  const target = e.notification.data?.url || '/life-dashboard/habits/';
-  e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      for (const c of list) {
-        if (c.url.includes('/life-dashboard/') && 'focus' in c) return c.focus();
-      }
-      return clients.openWindow(target);
-    })
   );
 });

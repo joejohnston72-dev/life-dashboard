@@ -1,8 +1,6 @@
 // Cross-module insight engine. Reads data from every module and returns a
 // prioritised list of warnings + improvement tips for the home dashboard.
 import db from './db.js';
-import { supabase } from './supabase.js';
-import { isPushEnabled, pushSupported } from './push.js';
 
 const DAY = 86400000;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -30,11 +28,10 @@ export async function generateSuggestions() {
 
   await Promise.allSettled([
     workoutSuggestions(add),
-    habitSuggestions(add),
   ]);
 
   // Filter out anything the user has dismissed
-  const dismissed = (await db.get('habits', 'suggestions-dismissed')) || [];
+  const dismissed = (await db.get('workout', 'suggestions-dismissed')) || [];
   const visible = out.filter(s => !dismissed.includes(s.key));
 
   visible.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
@@ -47,10 +44,10 @@ export async function generateSuggestions() {
 
 // Mark a suggestion dismissed (persists + syncs).
 export async function dismissSuggestion(key) {
-  const dismissed = (await db.get('habits', 'suggestions-dismissed')) || [];
+  const dismissed = (await db.get('workout', 'suggestions-dismissed')) || [];
   if (!dismissed.includes(key)) {
     dismissed.push(key);
-    await db.set('habits', 'suggestions-dismissed', dismissed);
+    await db.set('workout', 'suggestions-dismissed', dismissed);
   }
 }
 
@@ -83,32 +80,4 @@ async function workoutSuggestions(add) {
   // Consistency win
   const last7 = sessions.filter(s => daysSince(s.date || s.startTime) <= 7).length;
   if (last7 >= 4) add('good', 'Workout', '🔥', `${last7} workouts in the last 7 days — great consistency!`, 'workout/');
-}
-
-// ── Habits + reminders ────────────────────────────────────────────────────────
-async function habitSuggestions(add) {
-  const [habits, doneToday] = await Promise.all([
-    db.get('habits', 'habits-list'),
-    db.get('habits', `done-${today()}`),
-  ]);
-  const list = habits || [];
-  const done = doneToday || [];
-
-  if (list.length) {
-    const remaining = list.filter(h => !done.includes(h.id));
-    const hour = new Date().getHours();
-    if (remaining.length && hour >= 18) {
-      add('warn', 'Habits', '✅', `${remaining.length} habit${remaining.length > 1 ? 's' : ''} still not done today.`, 'habits/');
-    } else if (remaining.length === 0) {
-      add('good', 'Habits', '🎯', 'All habits done today — nice work!', 'habits/');
-    }
-  }
-
-  // Reminders without notifications enabled
-  try {
-    const { data: reminders } = await supabase.from('reminders').select('id').eq('active', true).limit(1);
-    if (reminders && reminders.length && pushSupported() && !(await isPushEnabled())) {
-      add('warn', 'Habits', '🔔', "Notifications are off — your reminders won't fire. Enable them.", 'habits/');
-    }
-  } catch (_) {}
 }

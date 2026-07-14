@@ -16,8 +16,8 @@ Personal PWA. Read this first to avoid re-reading the whole codebase.
 `preview_start` name `life-dashboard` (port 3457, in `~/.claude/launch.json`). Then `preview_eval` to set a fake Supabase token in localStorage and navigate to `/workout/`. Drive the UI via dispatched events; assert via IndexedDB reads. Screenshot for visual checks.
 
 ## Modules
-- **Home** (`index.html`) — 3 tiles (Calories→external CalorieAI app, Workout, Habits) + Suggestions panel (`shared/suggestions.js`, reads workout+habits) + auth overlay.
-- **Habits** (`habits/`) — tabbed Today (habit tracker, streaks) + Reminders (natural-language → Claude parse → Supabase `reminders` → Edge Function `send-reminders` via pg_cron → Web Push). Anthropic key stored `db.get('habits','anthropic-key')`. Model `claude-haiku-4-5-20251001`.
+- **Home** (`index.html`) — 2 tiles (Calories→external CalorieAI app, Workout) + Suggestions panel (`shared/suggestions.js`, workout only) + auth overlay.
+- **Habits — REMOVED** (never adopted). Deleted the `habits/` module, `shared/push.js`, and the reminders backend (`supabase/functions/send-reminders`, schema/cron SQL). The `'habits'` IndexedDB store is intentionally KEPT in `db.js` STORES so the user's saved Anthropic key (`db.get('habits','anthropic-key')`) still resolves for the coach. Note: any deployed Supabase `send-reminders` pg_cron job / `reminders` table still exist server-side until torn down (`select cron.unschedule('send-reminders-every-minute');`), but harmless with no UI to create reminders.
 - **Workout** (`workout/`) — the big one; see below.
 - Removed: Finance module + GoCardless (deleted; user uses external budget tracker).
 
@@ -41,7 +41,7 @@ Personal PWA. Read this first to avoid re-reading the whole codebase.
 - `myRoutines.js` — `MY_ROUTINES` (user's 5 real Hevy days, one-time seeded).
 - `stats.js` — inline-SVG charts: `lifetimeTotals`, `weeklyVolumeHTML`, `muscleBalanceHTML`, `exerciseFrequency`, `progressionHTML`, `monthlyViewHTML`, `e1RM` (via achievements). No chart libs.
 - `achievements.js` — `buildRecords`, `detectPBs`, `absorbSet`, `e1RM`, `getStreakSettings`/`saveStreakSettings`, `computeStreak`, `computeMilestones`.
-- `coach.js` — AI coach. `DRAFT_ROUTINE_TOOL` (schema = template contract), `normName`, `buildCoachContext(sessions,templates,records,streak,allExercises)` → system string (**workout data only**), `assembleContext({...})`, `validateRoutine(routine,{getAllExercises,guessCategory})` (exact-normalise match → containment ≥6 chars → else custom), `callCoach({apiMessages,system,forceTool,getKey})`. Model **`claude-sonnet-5`**. Reuses habits key (`db.get('habits','anthropic-key')`) with `workout` fallback. Thread persisted `db 'coach-thread'`. **Never replay tool_use blocks** (persist assistant turns as plain text + routine object) — avoids the pairing 400.
+- `coach.js` — AI coach. `DRAFT_ROUTINE_TOOL` (schema = template contract), `normName`, `buildCoachContext(sessions,templates,records,streak,allExercises)` → system string (**workout data only**), `assembleContext({...})`, `validateRoutine(routine,{getAllExercises,guessCategory})` (exact-normalise match → containment ≥6 chars → else custom), `callCoach({apiMessages,system,forceTool,getKey})`. Model **`claude-sonnet-5`**. Key: `db.get('workout','anthropic-key')` with a `habits`-store fallback (preserves the key entered before Habits was removed). Thread persisted `db 'coach-thread'`. **Never replay tool_use blocks** (persist assistant turns as plain text + routine object) — avoids the pairing 400.
 
 ## Workout data model (IndexedDB store `'workout'`)
 - `session-<id>` → `{id, title, date:'YYYY-MM-DD', startTime:ISO, endTime, duration:secs, exercises:[...], pbs:[{exercise,type,label}]}`

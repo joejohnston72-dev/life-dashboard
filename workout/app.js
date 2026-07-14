@@ -364,7 +364,6 @@ function buildSetRow(ex, ei, set) {
   tr.dataset.setId = set.id;
   tr.innerHTML = `
     <td class="set-num">${si + 1}</td>
-    <td class="set-prev">${setPrevText(lt, prev)}</td>
     ${cfg.cols.map(c => setInputCell(c, set, ex, ei, prev)).join('')}
     <td class="set-check-cell"><button class="set-check" data-ei="${ei}" data-set-id="${set.id}">${set.done ? '✓' : ''}</button></td>
   `;
@@ -378,7 +377,7 @@ function buildExerciseBlock(ex, ei) {
   const color = CATEGORY_COLORS[ex.category] || '#888';
   const cfg = LOGTYPES[resolveLogType(ex)];
   const headCols = cfg.head.map(h => `<th>${h}</th>`).join('');
-  const colspan = cfg.cols.length + 3;
+  const colspan = cfg.cols.length + 2;
 
   block.innerHTML = `
     <div class="ex-block-header" data-ei="${ei}">
@@ -387,7 +386,6 @@ function buildExerciseBlock(ex, ei) {
       <button class="ex-cue-btn" data-cue="${esc(ex.name)}" aria-label="Form cues">ⓘ</button>
       <button class="ex-menu-btn" data-ei="${ei}">⋯</button>
     </div>
-    ${ex.prevPerf ? `<div class="ex-prev-note">Previous: ${esc(ex.prevPerf)}</div>` : ''}
     <div class="ex-rest-control">
       <span class="ex-rest-icon">⏱</span>
       <span class="ex-rest-label">Rest timer</span>
@@ -397,7 +395,7 @@ function buildExerciseBlock(ex, ei) {
     </div>
     <input class="ex-notes-input" placeholder="Notes…" value="${esc(ex.notes||'')}" data-ei="${ei}" data-field="notes">
     <table class="sets-table">
-      <thead><tr><th>#</th><th>Previous</th>${headCols}<th></th></tr></thead>
+      <thead><tr><th>#</th>${headCols}<th></th></tr></thead>
       <tbody class="sets-body" data-ei="${ei}"></tbody>
     </table>
     <table class="sets-table"><tbody>
@@ -819,29 +817,43 @@ function startReorderDrag(e, card) {
   const list = document.getElementById('reorderList');
   card.setPointerCapture?.(e.pointerId);
   card.classList.add('dragging');
-  const startY = e.clientY;
+  // anchorY maps the finger position to transform:0 (card at its DOM slot). When
+  // we reorder in the DOM, the card's natural slot shifts by a row height, so we
+  // adjust anchorY by that amount to keep the card glued to the finger — this is
+  // what prevents the jump/overlap glitch.
+  let anchorY = e.clientY;
 
   const move = ev => {
-    card.style.transform = `translateY(${ev.clientY - startY}px)`;
-    const cards = [...list.querySelectorAll('.reorder-card')].filter(c => c !== card);
-    for (const other of cards) {
+    if (ev.cancelable) ev.preventDefault();
+    card.style.transform = `translateY(${ev.clientY - anchorY}px)`;
+    const rect = card.getBoundingClientRect();
+    const cardMid = rect.top + rect.height / 2;
+    for (const other of [...list.querySelectorAll('.reorder-card')]) {
+      if (other === card) continue;
       const r = other.getBoundingClientRect();
-      const mid = r.top + r.height / 2;
-      if (ev.clientY < mid && other.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      const otherMid = r.top + r.height / 2;
+      const pos = card.compareDocumentPosition(other);
+      // dragged above a preceding neighbour → move card up before it
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING && cardMid < otherMid) {
         list.insertBefore(card, other);
-        card.style.transform = ''; // re-anchor
-        return;
+        anchorY -= r.height;
+        card.style.transform = `translateY(${ev.clientY - anchorY}px)`;
+        break;
       }
-      if (ev.clientY > mid && other.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_PRECEDING) {
+      // dragged below a following neighbour → move card down after it
+      if (pos & Node.DOCUMENT_POSITION_FOLLOWING && cardMid > otherMid) {
         other.after(card);
-        card.style.transform = '';
-        return;
+        anchorY += r.height;
+        card.style.transform = `translateY(${ev.clientY - anchorY}px)`;
+        break;
       }
     }
   };
   const up = () => {
-    card.classList.remove('dragging');
+    card.classList.add('snapback');
     card.style.transform = '';
+    card.classList.remove('dragging');
+    setTimeout(() => card.classList.remove('snapback'), 150);
     card.removeEventListener('pointermove', move);
     card.removeEventListener('pointerup', up);
     card.removeEventListener('pointercancel', up);
@@ -2044,7 +2056,8 @@ document.getElementById('awTitle').addEventListener('input', e => {
 let coachThread = null;   // [{role, text, routine?}]
 let coachBusy = false;
 
-// Reuse the key the user already entered in Habits; fall back to a workout-store key.
+// Coach API key: workout-store key, falling back to any key previously saved
+// under the (now-removed) habits store so it carries over seamlessly.
 async function coachGetKey() {
   return (await db.get('workout', 'anthropic-key')) || (await db.get('habits', 'anthropic-key')) || '';
 }

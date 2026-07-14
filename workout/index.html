@@ -13,6 +13,9 @@
   <link rel="stylesheet" href="../styles.css">
   <style>
     :root { --blue: #4fc3f7; --green: #34d399; --red: #e94560; --amber: #fbbf24; --purple: #ce93d8; }
+    /* Stop iOS from auto-inflating text after a DOM reflow (e.g. deleting a set/
+       exercise) — keeps the smaller, consistent size. */
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     body { padding-bottom: calc(env(safe-area-inset-bottom) + 60px); overscroll-behavior: none; }
     /* Kill double-tap zoom + 300ms tap delay app-wide */
     html, body, button, input, select { touch-action: manipulation; }
@@ -207,11 +210,16 @@
     /* Reorder mode */
     .reorder-hint { font-size:0.8rem; color:var(--text-muted); text-align:center; padding:14px 0 10px; }
     .reorder-card {
-      display:flex; align-items:center; gap:12px;
-      background:var(--surface); border-radius:12px; padding:15px 14px; margin-bottom:8px;
+      display:flex; align-items:center; gap:12px; position:relative;
+      background:var(--surface2); border:1px solid rgba(255,255,255,0.06);
+      border-radius:12px; padding:15px 14px; margin-bottom:8px;
       touch-action:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
     }
-    .reorder-card.dragging { opacity:0.85; box-shadow:0 6px 20px rgba(0,0,0,0.5); position:relative; z-index:5; }
+    .reorder-card.snapback { transition: transform .15s ease; }
+    .reorder-card.dragging {
+      opacity:1; z-index:20; border-color:rgba(79,195,247,0.5);
+      background:#20222e; box-shadow:0 10px 28px rgba(0,0,0,0.6); transform-origin:center;
+    }
     .reorder-name { flex:1; font-size:0.95rem; font-weight:700; }
     .reorder-grip { color:var(--text-muted); font-size:1rem; }
     .reorder-done {
