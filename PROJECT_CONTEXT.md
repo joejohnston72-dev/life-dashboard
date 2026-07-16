@@ -1,13 +1,16 @@
-# Life Dashboard — Project Context (source of truth)
+# Gym and Calorie App — Project Context (source of truth)
 
-Personal PWA. Read this first to avoid re-reading the whole codebase.
+Personal PWA. Read this first to avoid re-reading the whole codebase. (Displayed
+app name is "Gym and Calorie App"; the repo/folder/deploy path stays
+`life-dashboard` — renaming those is a separate, much bigger operation and
+wasn't asked for.)
 
 - **Live:** https://joejohnston72-dev.github.io/life-dashboard/
 - **Repo:** github.com/joejohnston72-dev/life-dashboard (public) · **Local:** `/Users/joejohnston/life-dashboard`
 - **Deploy:** `git push` to `main` → GitHub Pages. `gh` at `~/bin/gh`. `.nojekyll` present.
   Pages builds are sometimes **stuck in "building"** for hours — retrigger with
   `gh api -X POST repos/joejohnston72-dev/life-dashboard/pages/builds` and poll
-  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v28**.
+  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v29**.
 - **Stack:** vanilla JS ES modules, **no build step**. IndexedDB local-first (`shared/db.js`) + Supabase sync + auth.
 - **Auth:** Supabase email **OTP code** (not magic link). Session faked in preview via `localStorage['sb-xjcnkivlkfzdycbyxxlx-auth-token']`.
 - **Service worker:** network-first + `cache:'no-cache'`; auto-updates (polls every 60s, reloads on controllerchange). If updates won't land: delete PWA + re-add.
@@ -16,7 +19,7 @@ Personal PWA. Read this first to avoid re-reading the whole codebase.
 `preview_start` name `life-dashboard` (port 3457, in `~/.claude/launch.json`). Then `preview_eval` to set a fake Supabase token in localStorage and navigate to `/workout/`. Drive the UI via dispatched events; assert via IndexedDB reads. Screenshot for visual checks.
 
 ## Modules
-- **Home** (`index.html`) — 2 tiles (Calories→external CalorieAI app, Gym App/`workout/`) + Suggestions panel (`shared/suggestions.js`, workout only) + auth overlay.
+- **Home** (`index.html`) — the root PWA, displayed name **"Gym and Calorie App"** (title, manifest, apple-mobile-web-app-title, header, auth-screen title). 2 tiles (Calories→external CalorieAI app, Gym App/`workout/`) + Suggestions panel (`shared/suggestions.js`, workout only) + auth overlay. Note the two-tier naming: the root app is "Gym and Calorie App", the workout tile/module within it is separately branded "Gym App" — that's intentional, per how each rename was requested.
 - **Habits — REMOVED** (never adopted). Deleted the `habits/` module, `shared/push.js`, and the reminders backend (`supabase/functions/send-reminders`, schema/cron SQL). The `'habits'` IndexedDB store is intentionally KEPT in `db.js` STORES so the user's saved Anthropic key (`db.get('habits','anthropic-key')`) still resolves for the coach. Note: any deployed Supabase `send-reminders` pg_cron job / `reminders` table still exist server-side until torn down (`select cron.unschedule('send-reminders-every-minute');`), but harmless with no UI to create reminders.
 - **Gym App** (`workout/`, folder/route unchanged — only the branding is "Gym App" now: tab title, PWA install name, in-app header, home-tile label) — the big one; see below.
 - Removed: Finance module + GoCardless (deleted; user uses external budget tracker).
@@ -63,7 +66,7 @@ Personal PWA. Read this first to avoid re-reading the whole codebase.
 - The `DURATION_NAMES` regex (app.js) intentionally does **not** match bare `hang` — only `dead hang` — because bare `hang` false-matched "Leg Raise (Hanging)" and forced a rep-based exercise into time-tracking.
 
 ## History (why the app is shaped this way)
-Built across many sessions: workout is a full Hevy replacement (live logging, rest timer, PBs, streaks, stats, gestures, monthly view, Hevy CSV import) + AI coach. v25 shipped active-workout polish (swipeable inputs, green done rows, persistent timer, louder chime, auto-advance focus, keyboard-safe layout). v28: renamed the workout module to **Gym App**; removed the on-screen total-workout countup timer; added per-exercise ideal rep-range badges (static science-based table + AI auto-lookup for new/custom exercises); fixed a stored-XSS gap in `esc()`, a `logType`/`repRange` carryover bug on exercise replace, a `prevPerf`/`prevSets` storage leak into saved sessions, and the `Leg Raise (Hanging)` duration-type misclassification.
+Built across many sessions: workout is a full Hevy replacement (live logging, rest timer, PBs, streaks, stats, gestures, monthly view, Hevy CSV import) + AI coach. v25 shipped active-workout polish (swipeable inputs, green done rows, persistent timer, louder chime, auto-advance focus, keyboard-safe layout). v28: renamed the workout module to **Gym App**; removed the on-screen total-workout countup timer; added per-exercise ideal rep-range badges (static science-based table + AI auto-lookup for new/custom exercises); fixed a stored-XSS gap in `esc()`, a `logType`/`repRange` carryover bug on exercise replace, a `prevPerf`/`prevSets` storage leak into saved sessions, and the `Leg Raise (Hanging)` duration-type misclassification. v29: renamed the root project to **Gym and Calorie App** (title, manifest, apple-mobile-web-app-title, header, auth-screen title) — repo/folder/deploy path unchanged.
 
 ## Possible next steps (not yet requested)
 1. Exercise tracking **types** (cardio/distance/time/reps-only/weighted), rest-timer editing (incl. Off), history date/time editing, and richer AI-coach context are all already implemented — see `LOGTYPES`, `.ex-rest-value`/`openRestSheet`, `openDateEditor`, and `coach.js` respectively.

@@ -1,7 +1,7 @@
 {
-  "name": "Life Dashboard",
-  "short_name": "Dashboard",
-  "description": "Personal life dashboard — calories, workout",
+  "name": "Gym and Calorie App",
+  "short_name": "Gym & Cal",
+  "description": "Personal gym and calorie tracking app",
   "start_url": "/life-dashboard/",
   "scope": "/life-dashboard/",
   "display": "standalone",
