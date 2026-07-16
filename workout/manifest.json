@@ -1,6 +1,6 @@
 {
-  "name": "Workout",
-  "short_name": "Workout",
+  "name": "Gym App",
+  "short_name": "Gym App",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

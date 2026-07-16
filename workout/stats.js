@@ -3,7 +3,7 @@
 import { CATEGORY_COLORS } from './exercises.js';
 import { e1RM } from './achievements.js';
 
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const dateOf = s => new Date((s.date || (s.startTime || '').slice(0, 10) || '1970-01-01') + 'T12:00:00');
 const workingSets = ex => (ex.sets || []).filter(st => st.done && st.type !== 'warmup');
 

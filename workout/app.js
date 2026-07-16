@@ -9,6 +9,7 @@ import { buildRecords, detectPBs, absorbSet, e1RM,
 import { lifetimeTotals, weeklyVolumeHTML, muscleBalanceHTML,
          exerciseFrequency, progressionHTML, monthlyViewHTML } from './stats.js';
 import { assembleContext, callCoach, validateRoutine } from './coach.js';
+import { resolveRepRange, fetchAIRepRange } from './repRanges.js';
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -23,8 +24,11 @@ function stableId(str) {
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
   return 'hevy-' + Math.abs(h).toString(36);
 }
-const esc   = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const fmtKg = v => (v || 0) % 1 === 0 ? String(v || 0) : String(v || 0);
+// Escapes quotes too, not just <>& — names are user-typed free text and get
+// interpolated into HTML attributes (data-cue="...", data-name="...") in
+// several places, so an unescaped " would break out of the attribute.
+const esc   = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmtKg = v => String(v || 0);
 const fmtTime = secs => {
   const m = Math.floor(secs / 60), s = secs % 60;
   return m + ':' + String(s).padStart(2,'0');
@@ -40,7 +44,10 @@ const LOGTYPES = {
   duration:   { cols: ['time'],               head: ['Time'],        label: 'Time / hold' },
   cardio:     { cols: ['distance', 'time'],   head: ['km', 'Time'],  label: 'Distance & time (cardio)' },
 };
-const DURATION_NAMES = /plank|hold|wall sit|dead hang|hang|l-sit|hollow/i;
+// NB: bare "hang" was removed — it false-matched "Leg Raise (Hanging)" (a
+// rep-based exercise) and forced it into time-tracking. "dead hang" alone
+// covers the actual isometric hold.
+const DURATION_NAMES = /plank|hold|wall sit|dead hang|l-sit|hollow/i;
 // Infer a tracking type for a built-in / legacy exercise that has none stored.
 // Cardio defaults to time (matches "25min stairs/cycle"); distance+time ('cardio')
 // is only used when the user explicitly picks it for a new exercise.
@@ -104,18 +111,13 @@ function releaseWakeLock() { wakeLock?.release(); wakeLock = null; }
 
 // ── Active session state ──────────────────────────────────────────────────────
 let activeSession   = null;   // { id, title, startTime, exercises: [...], pbs: [...] }
-let sessionStartMs  = 0;      // clock derives from this, never from an increment
-let sessionTimer    = null;
+let sessionStartMs  = 0;      // duration derives from this — no on-screen countup (deliberately
+                              // not displayed: a running total invites "how long left" anxiety
+                              // instead of focus on the workout itself). Still recorded for stats.
 let sessionRecords  = {};     // per-exercise all-time bests, for PB detection + typo guard
 let routineMode     = false;
 
 const sessionSecsNow = () => Math.max(0, Math.floor((Date.now() - sessionStartMs) / 1000));
-function updateSessionClock() {
-  if (!activeSession || routineMode) return;
-  const t = fmtTime(sessionSecsNow());
-  document.getElementById('awTimer').textContent   = t;
-  document.getElementById('miniTimer').textContent = t;
-}
 
 // ── Rest timer state (timestamp-based — survives backgrounding) ───────────────
 let restTimer      = null;
@@ -154,7 +156,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.getElementById('sec' + activeTab).classList.add('active');
     document.getElementById('mainTitle').textContent =
-      activeTab === 'Dashboard' ? 'Workout' : activeTab;
+      activeTab === 'Dashboard' ? 'Gym App' : activeTab;
     document.getElementById('miniBar').classList.toggle('visible', !!activeSession);
     if (activeTab === 'Dashboard') { renderDashboard(); }
     if (activeTab === 'Library')   { renderLibrary();   }
@@ -190,7 +192,6 @@ function freshSet(tpl, prevSets, si) {
 async function startEmptyWorkout(prefill = null) {
   routineMode = false;
   document.getElementById('awFinishBtn').textContent = 'Finish';
-  document.getElementById('awTimer').style.display = '';
   document.getElementById('awTitle').placeholder = 'Workout name…';
 
   // One history load powers previous-performance ghosts AND PB records.
@@ -200,11 +201,13 @@ async function startEmptyWorkout(prefill = null) {
   const allEx = await getAllExercises();
   const exercises = (prefill?.exercises || []).map(e => {
     const prev = prevPerfFrom(past, e.name);
-    const logType = e.logType || prev?.logType || allEx.find(x => x.name === e.name)?.logType || exLogType(e.name, e.category);
+    const def = allEx.find(x => x.name === e.name);
+    const logType = e.logType || prev?.logType || def?.logType || exLogType(e.name, e.category);
     return {
       id: uid(), name: e.name, category: e.category, logType,
       restTime: e.restTime ?? prev?.restTime ?? 60,
       notes: prev?.notes || '',
+      repRange: e.repRange || def?.repRange || null,
       prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
       prevSets: prev?.sets || null,
       sets: (e.sets?.length ? e.sets : [{}]).map((tpl, si) => freshSet(tpl, prev?.sets || null, si)),
@@ -220,9 +223,6 @@ async function startEmptyWorkout(prefill = null) {
   };
   sessionStartMs = Date.now();
   acquireWakeLock();
-  clearInterval(sessionTimer);
-  sessionTimer = setInterval(updateSessionClock, 1000);
-  updateSessionClock();
   openActiveWorkout();
   renderActiveSession();
   saveSoon();
@@ -241,7 +241,6 @@ function startNewRoutine(prefill = null) {
     })),
     pbs: [],
   };
-  document.getElementById('awTimer').style.display = 'none';
   document.getElementById('awFinishBtn').textContent = 'Save';
   openActiveWorkout();
   document.getElementById('awTitle').placeholder = 'Routine name…';
@@ -304,11 +303,7 @@ async function checkForAbandonedSession() {
   const past = await loadSessions();
   sessionRecords = buildRecords(past, activeSession.id);
   document.getElementById('awFinishBtn').textContent = routineMode ? 'Save' : 'Finish';
-  document.getElementById('awTimer').style.display = routineMode ? 'none' : '';
   acquireWakeLock();
-  clearInterval(sessionTimer);
-  sessionTimer = setInterval(updateSessionClock, 1000);
-  updateSessionClock();
   openActiveWorkout();
   document.getElementById('awTitle').value = saved.title || activeSession.title || '';
   renderActiveSession();
@@ -375,9 +370,11 @@ function buildExerciseBlock(ex, ei) {
   block.className = 'ex-block';
   block.dataset.ei = ei;
   const color = CATEGORY_COLORS[ex.category] || '#888';
-  const cfg = LOGTYPES[resolveLogType(ex)];
+  const lt = resolveLogType(ex);
+  const cfg = LOGTYPES[lt];
   const headCols = cfg.head.map(h => `<th>${h}</th>`).join('');
   const colspan = cfg.cols.length + 2;
+  const range = resolveRepRange({ name: ex.name, category: ex.category, logType: lt, repRange: ex.repRange });
 
   block.innerHTML = `
     <div class="ex-block-header" data-ei="${ei}">
@@ -386,6 +383,7 @@ function buildExerciseBlock(ex, ei) {
       <button class="ex-cue-btn" data-cue="${esc(ex.name)}" aria-label="Form cues">ⓘ</button>
       <button class="ex-menu-btn" data-ei="${ei}">⋯</button>
     </div>
+    <div class="ex-rep-range" data-ex-name="${esc(ex.name)}">${range ? `🎯 Target: ${range.min}–${range.max} reps` : ''}</div>
     <div class="ex-rest-control">
       <span class="ex-rest-icon">⏱</span>
       <span class="ex-rest-label">Rest timer</span>
@@ -667,10 +665,18 @@ async function replaceExercise(ei, newName, newCat) {
   m[newName] = (m[newName] || 0) + 1;
   await db.set(STORE, 'replacement-prefs', prefs);
 
+  // Re-derive logType/repRange for the NEW exercise — carrying over the old
+  // exercise's was a bug: e.g. replacing a weighted lift with a duration-based
+  // one (a plank, cardio) kept showing weight×reps columns.
+  const allEx = await getAllExercises();
+  const def = allEx.find(x => x.name === newName);
+  const logType = prev?.logType || def?.logType || exLogType(newName, newCat);
+
   activeSession.exercises[ei] = {
     ...old,
-    name: newName, category: newCat,
+    name: newName, category: newCat, logType,
     notes: prev?.notes || '',
+    repRange: def?.repRange || null,
     prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
     prevSets: prev?.sets || null,
     restTime: old.restTime ?? prev?.restTime ?? 60,
@@ -936,7 +942,6 @@ document.getElementById('saveBtn').onclick    = saveWorkout;
 document.getElementById('discardBtn').onclick = () => { if (confirm('Discard this workout? All logged sets will be lost.')) cancelWorkout(); };
 
 async function saveWorkout() {
-  clearInterval(sessionTimer);
   releaseWakeLock();
   const session = {
     ...activeSession,
@@ -944,7 +949,9 @@ async function saveWorkout() {
     endTime:  new Date().toISOString(),
     duration: sessionSecsNow(),
     date:     new Date().toISOString().slice(0,10),
-    exercises: activeSession.exercises.map(e => ({
+    // Strip transient/derived fields — prevPerf/prevSets were only ghosting aids
+    // for the live editor and would otherwise bloat every saved session forever.
+    exercises: activeSession.exercises.map(({ prevPerf, prevSets, ...e }) => ({
       ...e,
       sets: e.sets.map(({ touched, tW, tR, ...s }) => s), // strip transient fields
     })),
@@ -960,13 +967,11 @@ async function saveWorkout() {
 }
 
 function cancelWorkout() {
-  clearInterval(sessionTimer);
   releaseWakeLock();
   skipRest();
   routineMode = false;
   activeSession = null;
   clearActiveSessionStore();
-  document.getElementById('awTimer').style.display = '';
   document.getElementById('workoutSummary').classList.remove('visible');
   document.getElementById('activeWorkout').classList.remove('visible');
   unfitActiveWorkout();
@@ -1129,7 +1134,6 @@ document.addEventListener('visibilitychange', () => {
   // visible again
   if (activeSession) {
     acquireWakeLock(); // iOS silently releases it on hide
-    updateSessionClock();
   }
   if (restEndsAt) {
     if (Date.now() >= restEndsAt) finishRest();
@@ -1262,6 +1266,7 @@ async function addExerciseToSession(name, category) {
     id: uid(), name, category, logType,
     notes: prev?.notes || '',
     restTime: prev?.restTime ?? 60,
+    repRange: def?.repRange || null,
     prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
     prevSets,
     sets: [freshSet(null, prevSets, 0)],
@@ -1294,14 +1299,61 @@ document.getElementById('customExSave').onclick = async () => {
   const cat     = document.getElementById('customExCat').value;
   const logType = document.getElementById('customExType').value || 'weighted';
   const custom = (await db.get(STORE, 'exercises-custom')) || [];
-  custom.push({ id: uid(), name, category: cat, logType, custom: true });
+  const entry = { id: uid(), name, category: cat, logType, custom: true };
+  custom.push(entry);
   await db.set(STORE, 'exercises-custom', custom);
   document.getElementById('customExModal').classList.remove('open');
   await addExerciseToSession(name, cat);
   openActiveWorkout();
   renderActiveSession();
   saveSoon();
+  lookupRepRangeForCustom(entry); // background AI lookup — updates in place when it resolves
 };
+
+// ── Ideal rep range for custom exercises: AI lookup + cache ───────────────────
+// Patches any already-rendered rep-range badges for this exercise name in place.
+function patchRepRangeBadge(name, range) {
+  if (!range) return;
+  document.querySelectorAll('.ex-rep-range').forEach(el => {
+    if (el.dataset.exName === name) el.textContent = `🎯 Target: ${range.min}–${range.max} reps`;
+  });
+  if (activeSession) {
+    for (const ex of activeSession.exercises) if (ex.name === name) ex.repRange = range;
+  }
+}
+
+async function lookupRepRangeForCustom(entry) {
+  if (entry.logType === 'duration' || entry.logType === 'cardio') return;
+  const range = await fetchAIRepRange({ name: entry.name, category: entry.category, getKey: coachGetKey });
+  if (!range) return;
+  const list = (await db.get(STORE, 'exercises-custom')) || [];
+  const idx = list.findIndex(e => e.id === entry.id);
+  if (idx === -1) return;
+  list[idx].repRange = range;
+  await db.set(STORE, 'exercises-custom', list);
+  patchRepRangeBadge(entry.name, range);
+  saveSoon();
+}
+
+// One-time-per-load backfill: any saved custom exercise still missing a rep
+// range (created before this feature, or before an API key was set) gets an
+// AI lookup so "add to all existing" also covers exercises added earlier.
+async function backfillCustomRepRanges() {
+  const custom = (await db.get(STORE, 'exercises-custom')) || [];
+  const pending = custom.filter(e => !e.repRange && e.logType !== 'duration' && e.logType !== 'cardio');
+  if (!pending.length) return;
+  const key = await coachGetKey();
+  if (!key) return;
+  let changed = false;
+  for (const entry of pending) {
+    const range = await fetchAIRepRange({ name: entry.name, category: entry.category, getKey: coachGetKey });
+    if (range) {
+      const idx = custom.findIndex(e => e.id === entry.id);
+      if (idx !== -1) { custom[idx].repRange = range; changed = true; patchRepRangeBadge(entry.name, range); }
+    }
+  }
+  if (changed) await db.set(STORE, 'exercises-custom', custom);
+}
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 async function getTemplates() { return (await db.get(STORE, 'templates')) || []; }
@@ -1361,8 +1413,7 @@ document.getElementById('templateNameSave').onclick = async () => {
     activeSession = null;
     clearActiveSessionStore();
     document.getElementById('activeWorkout').classList.remove('visible');
-  unfitActiveWorkout();
-    document.getElementById('awTimer').style.display = '';
+    unfitActiveWorkout();
     renderDashboard();
   } else {
     alert('Saved as routine!');
@@ -1872,7 +1923,8 @@ document.getElementById('clearHistoryBtn').onclick = async () => {
   if (!confirm('Delete ALL workout sessions? This cannot be undone.\n\nTemplates and custom exercises will be kept.')) return;
   const all = await db.getAll(STORE);
   for (const { key } of all) {
-    if (key.startsWith('session-') || key.startsWith('hevy-')) {
+    // Hevy imports are also stored under 'session-<hevy-id>' — always this prefix.
+    if (key.startsWith('session-')) {
       await db.delete(STORE, key);
     }
   }
@@ -2223,6 +2275,7 @@ document.getElementById('coachKeyModal').addEventListener('click', e => {
 document.getElementById('coachKeySave').onclick = async () => {
   await db.set('workout', 'anthropic-key', document.getElementById('coachKeyInput').value.trim());
   document.getElementById('coachKeyModal').classList.remove('open');
+  backfillCustomRepRanges(); // key just added — retry any exercises that had no range yet
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -2231,3 +2284,4 @@ await fixIncompletePushDayOnce();
 await checkForAbandonedSession();
 renderDashboard();
 renderHistory();
+backfillCustomRepRanges(); // background — fills in AI rep ranges for any custom exercise missing one

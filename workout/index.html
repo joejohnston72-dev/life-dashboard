@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Workout</title>
+  <title>Gym App</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0f0f1a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Workout">
+  <meta name="apple-mobile-web-app-title" content="Gym App">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="stylesheet" href="../styles.css">
   <style>
@@ -118,7 +118,6 @@
       padding:calc(env(safe-area-inset-top) + 14px) var(--gap) 10px;
       flex-shrink:0; background:var(--bg);
     }
-    .aw-timer { font-size:0.9rem; color:var(--text-muted); min-width:48px; font-variant-numeric:tabular-nums; }
     .aw-title-input {
       flex:1; background:none; border:none; color:var(--text);
       font-size:1.1rem; font-weight:700; outline:none;
@@ -152,6 +151,7 @@
     .ex-cue-btn { background:none; border:none; color:var(--blue); cursor:pointer; font-size:1.05rem; padding:4px 6px; -webkit-tap-highlight-color:transparent; }
     .lib-cue-hint { font-size:0.66rem; color:var(--blue); margin-left:auto; white-space:nowrap; }
     .ex-prev-note { font-size:0.72rem; color:var(--text-muted); margin-bottom:8px; padding-left:16px; }
+    .ex-rep-range { font-size:0.72rem; font-weight:600; color:var(--blue); margin:-4px 0 8px; padding-left:16px; min-height:1em; }
     .ex-notes-input {
       width:100%; background:var(--surface2); border:none; border-radius:8px;
       padding:8px 10px; color:var(--text-muted); font-size:16px; outline:none; margin-bottom:8px;
@@ -610,7 +610,6 @@
     }
     #miniBar.visible { display:flex; }
     .mini-title { flex:1; font-size:0.9rem; font-weight:700; color:#000; }
-    .mini-timer { font-size:0.82rem; color:rgba(0,0,0,0.7); font-variant-numeric:tabular-nums; }
 
     /* ── Misc ── */
     .divider { height:1px; background:rgba(255,255,255,0.06); margin:12px 0; }
@@ -622,7 +621,7 @@
 <div id="mainApp">
   <div class="page-header">
     <button class="back-btn" id="homeBtn">←</button>
-    <h1 class="page-title" id="mainTitle">Workout</h1>
+    <h1 class="page-title" id="mainTitle">Gym App</h1>
   </div>
 
   <!-- Dashboard -->
@@ -700,7 +699,6 @@
 <!-- ── Active workout overlay ── -->
 <div id="activeWorkout">
   <div class="aw-header">
-    <span class="aw-timer" id="awTimer">0:00</span>
     <input class="aw-title-input" id="awTitle" placeholder="Workout name…" maxlength="50">
     <button class="header-btn" id="awFinishBtn">Finish</button>
   </div>
@@ -722,7 +720,6 @@
 <!-- ── Mini bar (workout in progress, different tab) ── -->
 <div id="miniBar" onclick="openActiveWorkout()">
   <span class="mini-title" id="miniTitle">Workout in progress</span>
-  <span class="mini-timer" id="miniTimer">0:00</span>
 </div>
 
 <!-- ── Exercise picker ── -->
