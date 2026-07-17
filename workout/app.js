@@ -118,6 +118,7 @@ let sessionRecords  = {};     // per-exercise all-time bests, for PB detection +
 let routineMode     = false;
 
 const sessionSecsNow = () => Math.max(0, Math.floor((Date.now() - sessionStartMs) / 1000));
+let backfillDate = null;   // when set, the in-progress workout saves to this past date (calendar backfill)
 
 // ── Rest timer state (timestamp-based — survives backgrounding) ───────────────
 let restTimer      = null;
@@ -189,10 +190,11 @@ function freshSet(tpl, prevSets, si) {
   };
 }
 
-async function startEmptyWorkout(prefill = null) {
+async function startEmptyWorkout(prefill = null, backfill = null) {
   routineMode = false;
-  document.getElementById('awFinishBtn').textContent = 'Finish';
-  document.getElementById('awTitle').placeholder = 'Workout name…';
+  backfillDate = backfill;
+  document.getElementById('awFinishBtn').textContent = backfill ? 'Save' : 'Finish';
+  document.getElementById('awTitle').placeholder = backfill ? `Workout on ${fmtDate(backfill)}…` : 'Workout name…';
 
   // One history load powers previous-performance ghosts AND PB records.
   const past = await loadSessions();
@@ -943,12 +945,17 @@ document.getElementById('discardBtn').onclick = () => { if (confirm('Discard thi
 
 async function saveWorkout() {
   releaseWakeLock();
+  // Backfill: a workout logged for a past day via the calendar saves to that
+  // date with a neutral noon timestamp and 0 duration (both editable after).
+  const isBackfill = !!backfillDate;
+  const dateStr = isBackfill ? backfillDate : new Date().toISOString().slice(0,10);
   const session = {
     ...activeSession,
-    title:    document.getElementById('awTitle').value.trim() || 'Workout',
-    endTime:  new Date().toISOString(),
-    duration: sessionSecsNow(),
-    date:     new Date().toISOString().slice(0,10),
+    title:     document.getElementById('awTitle').value.trim() || 'Workout',
+    date:      dateStr,
+    startTime: isBackfill ? `${dateStr}T12:00:00` : activeSession.startTime,
+    endTime:   isBackfill ? `${dateStr}T12:00:00` : new Date().toISOString(),
+    duration:  isBackfill ? 0 : sessionSecsNow(),
     // Strip transient/derived fields — prevPerf/prevSets were only ghosting aids
     // for the live editor and would otherwise bloat every saved session forever.
     exercises: activeSession.exercises.map(({ prevPerf, prevSets, ...e }) => ({
@@ -958,6 +965,7 @@ async function saveWorkout() {
   };
   await db.set(STORE, 'session-' + session.id, session);
   await clearActiveSessionStore();
+  backfillDate = null;
   document.getElementById('workoutSummary').classList.remove('visible');
   document.getElementById('activeWorkout').classList.remove('visible');
   unfitActiveWorkout();
@@ -970,6 +978,7 @@ function cancelWorkout() {
   releaseWakeLock();
   skipRest();
   routineMode = false;
+  backfillDate = null;
   activeSession = null;
   clearActiveSessionStore();
   document.getElementById('workoutSummary').classList.remove('visible');
@@ -1652,12 +1661,50 @@ async function renderStats() {
   const nextBtn = document.getElementById('monthNext');
   if (nextBtn && !nextBtn.disabled) nextBtn.onclick = () => shiftMonth(1);
 
+  // Tap a calendar day → open/edit that day's workout, or backfill an empty day.
+  el.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+    cell.onclick = () => openDayFromCalendar(cell.dataset.date, sessions);
+  });
+
   const renderProg = () => {
     document.getElementById('statsProgression').innerHTML =
       statsExercise ? progressionHTML(chrono, statsExercise) : '';
   };
   document.getElementById('statsExSelect').onchange = e => { statsExercise = e.target.value; renderProg(); };
   renderProg();
+}
+
+// ── Calendar day tap → open/edit that day, or backfill an empty day ──────────
+function sessionsOnDate(sessions, dateStr) {
+  return sessions.filter(s => (s.date || (s.startTime || '').slice(0, 10)) === dateStr);
+}
+function openDayFromCalendar(dateStr, sessions) {
+  const onDay = sessionsOnDate(sessions, dateStr);
+  if (onDay.length === 0) {
+    if (confirm(`No workout logged on ${fmtDate(dateStr)}.\n\nAdd one for this day?`)) {
+      startEmptyWorkout(null, dateStr);
+    }
+    return;
+  }
+  if (onDay.length === 1) { openHistoryDetail(onDay[0].id); return; }
+  openDayChooser(dateStr, onDay);
+}
+function openDayChooser(dateStr, list) {
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop open';
+  back.innerHTML = `<div class="modal">
+    <p class="modal-title">${esc(fmtDate(dateStr))}</p>
+    ${list.map(s => `<button class="sheet-btn" data-sid="${esc(s.id)}">${esc(s.title || 'Workout')} — ${(s.exercises || []).length} exercises</button>`).join('')}
+    <button class="sheet-btn" data-add="1" style="color:var(--blue)">+ Add another workout for this day</button>
+    <button class="sheet-btn" data-cancel="1" style="text-align:center;background:none;color:var(--text-muted)">Cancel</button>
+  </div>`;
+  document.body.appendChild(back);
+  back.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (e.target === back || btn?.dataset.cancel) { back.remove(); return; }
+    if (btn?.dataset.sid) { back.remove(); openHistoryDetail(btn.dataset.sid); return; }
+    if (btn?.dataset.add) { back.remove(); startEmptyWorkout(null, dateStr); }
+  });
 }
 
 // ── History render ────────────────────────────────────────────────────────────
@@ -1697,12 +1744,28 @@ function hdSetVal(ex, st) {
   if (lt === 'cardio')     return `${st.distance || 0} km · ${st.duration ? fmtDuration(st.duration) : (st.reps ? st.reps + ' min' : '0:00')}`;
   return `${fmtKg(st.weight)} kg × ${st.reps} reps`;
 }
-async function openHistoryDetail(sessionId) {
-  const s = await db.get(STORE, 'session-' + sessionId);
-  if (!s) return;
+// Inputs for one editable set (history amend mode); mapped back by real indices.
+function hdSetEditInputs(ex, ei, st, si) {
+  const lt = resolveLogType(ex);
+  const inp = (field, val, ph, step, mode) =>
+    `<input class="hd-edit-input" data-ei="${ei}" data-si="${si}" data-field="${field}"
+      type="${field === 'time' ? 'text' : 'number'}" ${field !== 'time' ? `min="0" step="${step}"` : ''}
+      inputmode="${mode}" value="${val}" placeholder="${ph}">`;
+  if (lt === 'bodyweight') return inp('reps', st.reps || '', 'reps', '1', 'numeric');
+  if (lt === 'duration')   return inp('time', st.duration ? fmtDuration(st.duration) : '', 'm:ss', '1', 'numeric');
+  if (lt === 'cardio')     return inp('distance', st.distance || '', 'km', '0.01', 'decimal') +
+                                  inp('time', st.duration ? fmtDuration(st.duration) : '', 'm:ss', '1', 'numeric');
+  return inp('weight', st.weight || '', 'kg', '0.5', 'decimal') + inp('reps', st.reps || '', 'reps', '1', 'numeric');
+}
 
+let hdSession   = null;
+let hdEditMode  = false;
+
+function renderHistoryDetailBody() {
+  const s = hdSession;
+  if (!s) return;
   document.getElementById('hdTitle').textContent = s.title || 'Workout';
-  document.getElementById('hdDelete').dataset.sid = sessionId;
+  document.getElementById('hdDelete').dataset.sid = s.id;
 
   const body = document.getElementById('hdBody');
   const doneSets = (s.exercises||[]).flatMap(e => (e.sets||[]).filter(st => st.done));
@@ -1715,9 +1778,9 @@ async function openHistoryDetail(sessionId) {
         <div class="stat-val">${fmtDate(s.date||s.startTime||'')}</div>
         <div class="stat-label">Date ✎</div>
       </div>
-      <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center">
+      <div class="stat-box" id="hdDurBox" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center;cursor:pointer">
         <div class="stat-val">${fmtTime(s.duration||0)}</div>
-        <div class="stat-label">Duration</div>
+        <div class="stat-label">Duration ✎</div>
       </div>
       <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center">
         <div class="stat-val">${Math.round(vol).toLocaleString()}</div>
@@ -1730,36 +1793,96 @@ async function openHistoryDetail(sessionId) {
       </div>` : ''}
     </div>
     ${pbCount ? `<div class="hd-pb-list">${s.pbs.map(p => `<div>🏆 ${esc(p.exercise)} — ${esc(p.label)}</div>`).join('')}</div>` : ''}
-    ${(s.exercises||[]).map(ex => `
+    ${(s.exercises||[]).map((ex, ei) => `
       <div style="background:var(--surface);border-radius:12px;padding:14px;margin-bottom:10px;border-left:4px solid ${CATEGORY_COLORS[ex.category]||'#4fc3f7'}">
         <div style="font-size:0.95rem;font-weight:700;margin-bottom:10px">${esc(ex.name)}</div>
         ${ex.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);margin:-6px 0 8px">📝 ${esc(ex.notes)}</div>` : ''}
-        ${(ex.sets||[]).filter(st => st.done || st.weight || st.reps || st.duration || st.distance).map((st,i) => `
-          <div class="hd-set-row">
-            <span class="hd-set-num">${i+1}${st.type === 'dropset' ? '<span style="color:#ce93d8"> D</span>' : st.type === 'warmup' ? '<span style="color:#fbbf24"> W</span>' : ''}</span>
-            <span class="hd-set-val">${hdSetVal(ex, st)}</span>
-            ${st.rpe ? `<span style="color:var(--text-muted);margin-left:auto;font-size:0.75rem">RPE ${st.rpe}</span>` : ''}
-          </div>
-        `).join('')}
+        ${hdEditMode
+          ? (ex.sets||[]).map((st, si) => `
+            <div class="hd-set-row hd-set-edit">
+              <span class="hd-set-num">${si+1}</span>
+              <div class="hd-edit-fields">${hdSetEditInputs(ex, ei, st, si)}</div>
+            </div>`).join('')
+          : (ex.sets||[]).filter(st => st.done || st.weight || st.reps || st.duration || st.distance).map((st,i) => `
+            <div class="hd-set-row">
+              <span class="hd-set-num">${i+1}${st.type === 'dropset' ? '<span style="color:#ce93d8"> D</span>' : st.type === 'warmup' ? '<span style="color:#fbbf24"> W</span>' : ''}</span>
+              <span class="hd-set-val">${hdSetVal(ex, st)}</span>
+              ${st.rpe ? `<span style="color:var(--text-muted);margin-left:auto;font-size:0.75rem">RPE ${st.rpe}</span>` : ''}
+            </div>`).join('')}
       </div>
     `).join('')}
     <div style="margin-bottom:20px"></div>
   `;
 
-  const tplBtn = document.createElement('button');
-  tplBtn.className = 'header-btn';
-  tplBtn.textContent = 'Save as Routine';
-  tplBtn.style.cssText = 'display:block;width:100%;margin-bottom:12px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(255,255,255,0.12);color:var(--text);font-size:0.9rem;cursor:pointer;';
-  tplBtn.onclick = () => {
-    const name = prompt('Routine name:', s.title || 'My Routine');
-    if (!name) return;
-    saveTemplate(name, s.exercises);
-  };
-  body.appendChild(tplBtn);
+  // Edit-sets toggle / save+cancel
+  if (hdEditMode) {
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'header-btn primary';
+    saveBtn.textContent = '✓ Save changes';
+    saveBtn.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border-radius:10px;font-size:0.9rem;cursor:pointer;';
+    saveBtn.onclick = saveHistoryEdits;
+    body.appendChild(saveBtn);
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'header-btn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'display:block;width:100%;margin-bottom:12px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(255,255,255,0.12);color:var(--text);font-size:0.9rem;cursor:pointer;';
+    cancelBtn.onclick = async () => { await openHistoryDetail(s.id); };
+    body.appendChild(cancelBtn);
+  } else {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'header-btn';
+    editBtn.textContent = '✎ Edit sets';
+    editBtn.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(79,195,247,0.4);color:var(--blue);font-size:0.9rem;font-weight:700;cursor:pointer;';
+    editBtn.onclick = () => { hdEditMode = true; renderHistoryDetailBody(); };
+    body.appendChild(editBtn);
 
-  // Tap the Date box to edit the workout's date & time
-  document.getElementById('hdDateBox').onclick = () => openDateEditor(sessionId, s);
+    const tplBtn = document.createElement('button');
+    tplBtn.className = 'header-btn';
+    tplBtn.textContent = 'Save as Routine';
+    tplBtn.style.cssText = 'display:block;width:100%;margin-bottom:12px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(255,255,255,0.12);color:var(--text);font-size:0.9rem;cursor:pointer;';
+    tplBtn.onclick = () => {
+      const name = prompt('Routine name:', s.title || 'My Routine');
+      if (!name) return;
+      saveTemplate(name, s.exercises);
+    };
+    body.appendChild(tplBtn);
+  }
 
+  document.getElementById('hdDateBox').onclick = () => openDateEditor(s.id, s);
+  document.getElementById('hdDurBox').onclick  = () => openDateEditor(s.id, s);
+}
+
+async function saveHistoryEdits() {
+  if (!hdSession) return;
+  document.querySelectorAll('#hdBody .hd-edit-input').forEach(inp => {
+    const ei = +inp.dataset.ei, si = +inp.dataset.si, field = inp.dataset.field;
+    const st = hdSession.exercises?.[ei]?.sets?.[si];
+    if (!st) return;
+    if (field === 'reps')          st.reps = parseInt(inp.value) || 0;
+    else if (field === 'distance') st.distance = parseFloat(inp.value) || 0;
+    else if (field === 'time')     st.duration = parseTime(inp.value);
+    else                           st.weight = parseFloat(inp.value) || 0;   // weight
+  });
+  // Any set that now carries data counts toward stats; fully-empty rows don't.
+  for (const ex of hdSession.exercises || []) {
+    for (const st of ex.sets || []) {
+      st.done = !!(st.weight || st.reps || st.duration || st.distance);
+    }
+  }
+  await db.set(STORE, 'session-' + hdSession.id, hdSession);
+  hdEditMode = false;
+  renderHistoryDetailBody();
+  renderHistory();
+  renderStats();
+  renderDashboard();
+}
+
+async function openHistoryDetail(sessionId) {
+  const s = await db.get(STORE, 'session-' + sessionId);
+  if (!s) return;
+  hdSession = s;
+  hdEditMode = false;
+  renderHistoryDetailBody();
   document.getElementById('historyDetail').classList.add('visible');
 }
 
@@ -1771,6 +1894,7 @@ function openDateEditor(sessionId, s) {
   const pad = n => String(n).padStart(2, '0');
   document.getElementById('hdDateInput').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   document.getElementById('hdTimeInput').value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  document.getElementById('hdDurationInput').value = s.duration ? Math.round(s.duration / 60) : '';
   document.getElementById('hdDateModal').classList.add('open');
 }
 document.getElementById('hdDateCancel').onclick = () => document.getElementById('hdDateModal').classList.remove('open');
@@ -1785,6 +1909,9 @@ document.getElementById('hdDateSave').onclick = async () => {
   if (!s) return;
   s.date = dateVal;
   s.startTime = `${dateVal}T${timeVal}:00`;
+  // Duration edit (minutes → seconds). Blank leaves it unchanged.
+  const durRaw = document.getElementById('hdDurationInput').value.trim();
+  if (durRaw !== '') s.duration = Math.max(0, Math.round(parseFloat(durRaw) * 60)) || 0;
   if (s.duration) {
     const end = new Date(`${dateVal}T${timeVal}:00`);
     end.setSeconds(end.getSeconds() + s.duration);
@@ -1794,6 +1921,7 @@ document.getElementById('hdDateSave').onclick = async () => {
   document.getElementById('hdDateModal').classList.remove('open');
   await openHistoryDetail(hdEditSid);   // refresh the detail
   renderHistory();
+  renderStats();
   renderDashboard();
 };
 

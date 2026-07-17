@@ -94,7 +94,7 @@ export const EXERCISES = [
   { name: 'Side Plank',                      category: 'Core' },
   { name: 'Crunch',                          category: 'Core' },
   { name: 'Cable Crunch',                    category: 'Core' },
-  { name: 'Leg Raise (Hanging)',             category: 'Core' },
+  { name: 'Leg Raise (Hanging)',             category: 'Core', logType: 'weighted' },
   { name: 'Leg Raise (Lying)',               category: 'Core' },
   { name: 'Russian Twist',                   category: 'Core' },
   { name: 'Ab Wheel Rollout',               category: 'Core' },

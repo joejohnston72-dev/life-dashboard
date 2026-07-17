@@ -408,6 +408,8 @@
       display:flex; align-items:center; justify-content:center; position:relative;
     }
     .cal-cell span { font-size:0.68rem; color:var(--text-muted); }
+    .cal-clickable { cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    .cal-clickable:active { opacity:0.6; }
     .cal-empty { background:none; }
     .cal-trained { background:rgba(79,195,247,calc(0.18 + var(--i,0.5) * 0.55)); }
     .cal-trained span { color:#fff; font-weight:700; }
@@ -565,6 +567,15 @@
     .hd-set-row { display:flex; gap:12px; font-size:0.82rem; padding:4px 0; color:var(--text-muted); }
     .hd-set-num { color:var(--text-muted); min-width:20px; }
     .hd-set-val { color:var(--text); font-weight:600; }
+    .hd-set-edit { align-items:center; }
+    .hd-edit-fields { display:flex; gap:8px; flex:1; }
+    .hd-edit-input {
+      flex:1; min-width:0; background:var(--surface2); border:1px solid rgba(79,195,247,0.3);
+      border-radius:8px; padding:8px 6px; color:var(--text); font-size:16px; text-align:center;
+      outline:none; -moz-appearance:textfield;
+    }
+    .hd-edit-input::-webkit-outer-spin-button, .hd-edit-input::-webkit-inner-spin-button { -webkit-appearance:none; }
+    .hd-edit-input:focus { border-color:var(--blue); }
 
     /* ── Library ── */
     .lib-item {
@@ -887,10 +898,10 @@
   </div>
 </div>
 
-<!-- ── Edit workout date/time modal ── -->
+<!-- ── Edit workout date/time/duration modal ── -->
 <div class="modal-backdrop" id="hdDateModal">
   <div class="modal">
-    <p class="modal-title">Edit date & time</p>
+    <p class="modal-title">Edit date, time & duration</p>
     <div class="form-group">
       <label class="form-label">Date</label>
       <input class="form-input" id="hdDateInput" type="date">
@@ -898,6 +909,10 @@
     <div class="form-group">
       <label class="form-label">Time</label>
       <input class="form-input" id="hdTimeInput" type="time">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Duration (minutes)</label>
+      <input class="form-input" id="hdDurationInput" type="number" min="0" max="600" inputmode="numeric" placeholder="e.g. 55">
     </div>
     <div class="modal-btns">
       <button class="btn btn-g" id="hdDateCancel">Cancel</button>

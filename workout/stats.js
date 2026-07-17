@@ -53,14 +53,16 @@ export function monthlyViewHTML(sessions, year, monthIdx) {
   const maxVol = Math.max(1, ...Object.values(trained));
   const todayDay = (now.getFullYear() === year && now.getMonth() === monthIdx) ? now.getDate() : -1;
 
+  const pad = n => String(n).padStart(2, '0');
   let cells = '';
   for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const vol = trained[d] || 0;
     const intensity = vol ? 0.35 + 0.65 * (vol / maxVol) : 0;
-    const cls = 'cal-cell' + (vol ? ' cal-trained' : '') + (d === todayDay ? ' cal-today' : '');
+    const cls = 'cal-cell cal-clickable' + (vol ? ' cal-trained' : '') + (d === todayDay ? ' cal-today' : '');
     const style = vol ? `style="--i:${intensity.toFixed(2)}"` : '';
-    cells += `<div class="${cls}" ${style}><span>${d}</span></div>`;
+    const dateStr = `${year}-${pad(monthIdx + 1)}-${pad(d)}`;
+    cells += `<div class="${cls}" data-date="${dateStr}" ${style}><span>${d}</span></div>`;
   }
 
   return `
