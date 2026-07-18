@@ -10,6 +10,14 @@
   --radius:    16px;
   --gap:       16px;
   --tile-size: clamp(140px, 44vw, 180px);
+
+  /* Typography — Google Sans with a single, app-wide weight hierarchy.
+     Only these three weights are used anywhere; everything maps onto them. */
+  --font: 'Google Sans', 'Product Sans', 'Roboto', -apple-system,
+          BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --fw-regular: 400;   /* body copy, secondary text */
+  --fw-medium:  500;   /* labels, tabs, chips, buttons */
+  --fw-bold:    700;   /* titles, headings, emphasis  */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -20,12 +28,52 @@ body {
   min-height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font);
+  font-weight: var(--fw-regular);
   -webkit-font-smoothing: antialiased;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
   touch-action: manipulation;
 }
+
+/* ── Inline Lucide icons ─────────────────────────────────────────────────── */
+.lc { display: inline-block; vertical-align: -0.15em; flex-shrink: 0; }
+i[data-lucide] { display: inline-flex; align-items: center; justify-content: center; line-height: 0; vertical-align: -0.18em; }
+button .lc, a .lc { pointer-events: none; }
+
+/* ── Tooltips (hover / focus; native `title` covers touch long-press) ─────── */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(4px);
+  background: #000; color: #fff; font-size: 0.72rem; font-weight: var(--fw-medium);
+  line-height: 1.2; white-space: nowrap; padding: 6px 9px; border-radius: 7px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.1);
+  opacity: 0; pointer-events: none; transition: opacity .14s ease, transform .14s ease;
+  z-index: 200;
+}
+@media (hover: hover) {
+  [data-tip]:hover::after, [data-tip]:focus-visible::after {
+    opacity: 1; transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* ── Skeleton loaders ─────────────────────────────────────────────────────── */
+.skeleton {
+  position: relative; overflow: hidden;
+  background: var(--surface); border-radius: 10px;
+}
+.skeleton::after {
+  content: ''; position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+  animation: skshimmer 1.2s infinite;
+}
+@keyframes skshimmer { 100% { transform: translateX(100%); } }
+.sk-line { height: 12px; border-radius: 6px; margin-bottom: 8px; }
+.sk-line.sk-lg { height: 18px; }
+.sk-line.sk-w70 { width: 70%; } .sk-line.sk-w50 { width: 50%; } .sk-line.sk-w40 { width: 40%; }
+@media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
 
 /* Header */
 .header {
@@ -34,7 +82,7 @@ body {
 
 .header__title {
   font-size: 1.6rem;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: -0.5px;
   flex: 1;
   min-width: 0;
@@ -78,11 +126,15 @@ body {
 .tile__icon {
   font-size: 2.4rem;
   line-height: 1;
+  color: var(--text);
 }
+.tile__icon .lc { width: 2.4rem; height: 2.4rem; }
+.tile--calories .tile__icon { color: var(--accent); }
+.tile--workout  .tile__icon { color: #4fc3f7; }
 
 .tile__label {
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--fw-medium);
 }
 
 .tile__badge {

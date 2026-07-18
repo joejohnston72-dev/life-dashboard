@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Gym App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0f0f1a">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -44,11 +47,18 @@
     }
     .tab {
       flex:1; background:none; border:none; color:var(--text-muted);
-      font-size:0.68rem; font-weight:600; cursor:pointer;
+      font-size:0.68rem; font-weight:500; cursor:pointer;
       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
     }
-    .tab .ti { font-size:1.1rem; }
+    .tab .ti { font-size:1.1rem; display:flex; align-items:center; justify-content:center; height:22px; color:currentColor; }
     .tab.active { color: var(--blue); }
+
+    /* Icon-in-button alignment (Lucide) */
+    .new-routine-btn, .coach-chip { display:inline-flex; align-items:center; gap:5px; }
+    .import-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+    .coach-chip-key, .coach-chip-clear { justify-content:center; }
+    .sheet-btn .lc { vertical-align:-0.2em; margin-right:2px; }
+    .header-btn .lc, .back-btn .lc { pointer-events:none; }
 
     .section { display:none; padding: 0 var(--gap) calc(env(safe-area-inset-bottom) + 72px); }
     .section.active { display:block; }
@@ -57,7 +67,7 @@
     .start-btn {
       width:100%; padding:18px; border-radius: var(--radius);
       background: var(--blue); border:none; color:#000;
-      font-size:1.1rem; font-weight:800; cursor:pointer; margin-bottom:20px;
+      font-size:1.1rem; font-weight:700; cursor:pointer; margin-bottom:20px;
       display:flex; align-items:center; justify-content:center; gap:10px;
       -webkit-tap-highlight-color: transparent;
     }
@@ -101,8 +111,17 @@
     .empty-state { text-align:center;color:var(--text-muted);padding:30px 0;font-size:0.88rem;line-height:1.7; }
 
     /* Lock the page behind the active-workout overlay so the tab bar / other
-       tabs can't scroll into view when the keyboard opens. */
-    body.workout-open { overflow:hidden; }
+       tabs can't scroll into view when the keyboard opens. `overflow:hidden`
+       alone isn't enough on iOS — when an input is focused Safari scrolls the
+       root document to keep the caret above the keyboard, dragging the
+       dashboard menu into the gap. Pinning the body with position:fixed removes
+       that scrollable root entirely, and its solid --bg backs any stray gap. */
+    body.workout-open {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%;
+      overflow: hidden;
+    }
 
     /* ── Active workout overlay ── */
     #activeWorkout {
@@ -131,7 +150,7 @@
     }
     .add-exercise-btn {
       width:100%; padding:13px; border-radius:12px; border:1px dashed rgba(79,195,247,0.4);
-      background:none; color:var(--blue); font-size:0.9rem; font-weight:600; cursor:pointer;
+      background:none; color:var(--blue); font-size:0.9rem; font-weight:500; cursor:pointer;
     }
 
     /* ── Exercise block (in active workout) ── */
@@ -151,7 +170,7 @@
     .ex-cue-btn { background:none; border:none; color:var(--blue); cursor:pointer; font-size:1.05rem; padding:4px 6px; -webkit-tap-highlight-color:transparent; }
     .lib-cue-hint { font-size:0.66rem; color:var(--blue); margin-left:auto; white-space:nowrap; }
     .ex-prev-note { font-size:0.72rem; color:var(--text-muted); margin-bottom:8px; padding-left:16px; }
-    .ex-rep-range { font-size:0.72rem; font-weight:600; color:var(--blue); margin:-4px 0 8px; padding-left:16px; min-height:1em; }
+    .ex-rep-range { font-size:0.72rem; font-weight:500; color:var(--blue); margin:-4px 0 8px; padding-left:16px; min-height:1em; }
     .ex-notes-input {
       width:100%; background:var(--surface2); border:none; border-radius:8px;
       padding:8px 10px; color:var(--text-muted); font-size:16px; outline:none; margin-bottom:8px;
@@ -291,7 +310,7 @@
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
     .rest-bar-count {
-      font-size:2rem; font-weight:800; font-variant-numeric:tabular-nums;
+      font-size:2rem; font-weight:700; font-variant-numeric:tabular-nums;
       color:var(--blue); min-width:76px; text-align:center; letter-spacing:-1.5px;
     }
     .rest-bar-count.low  { color:var(--amber); }
@@ -338,7 +357,7 @@
       font-size:0.62rem; font-weight:700; padding:2px 7px; border-radius:4px;
       color:#000; flex-shrink:0;
     }
-    .ep-ex-name { font-size:0.9rem; font-weight:600; flex:1; }
+    .ep-ex-name { font-size:0.9rem; font-weight:500; flex:1; }
     .ep-custom-row {
       padding:14px 0; border-top:1px solid rgba(255,255,255,0.07);
     }
@@ -377,7 +396,7 @@
     .sheet-btn {
       display:block; width:100%; padding:15px; margin-bottom:8px;
       border:none; border-radius:12px; background:var(--surface2); color:var(--text);
-      font-size:0.95rem; font-weight:600; cursor:pointer; text-align:left;
+      font-size:0.95rem; font-weight:500; cursor:pointer; text-align:left;
     }
     .sheet-btn.danger { color:var(--red); }
 
@@ -395,10 +414,10 @@
       font-size:1.2rem; width:34px; height:34px; cursor:pointer; -webkit-tap-highlight-color:transparent;
     }
     .month-nav-btn:disabled { opacity:0.3; }
-    .month-title { font-size:1rem; font-weight:800; }
+    .month-title { font-size:1rem; font-weight:700; }
     .month-totals { display:flex; gap:8px; margin-bottom:16px; }
     .month-stat { flex:1; background:var(--surface2); border-radius:12px; padding:12px 8px; text-align:center; }
-    .month-stat-val { font-size:1.35rem; font-weight:800; color:var(--blue); letter-spacing:-0.5px; }
+    .month-stat-val { font-size:1.35rem; font-weight:700; color:var(--blue); letter-spacing:-0.5px; }
     .month-stat-lbl { font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-top:3px; }
     .cal-dow { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:4px; }
     .cal-dow span { font-size:0.6rem; color:var(--text-muted); text-align:center; font-weight:700; }
@@ -416,13 +435,13 @@
     .cal-today { outline:2px solid var(--amber); outline-offset:-2px; }
     .month-foot { font-size:0.72rem; color:var(--text-muted); text-align:center; margin-top:12px; }
     .stats-card-title { font-size:0.85rem; font-weight:700; margin-bottom:12px; }
-    .stats-card-sub { font-size:0.7rem; font-weight:600; color:var(--text-muted); margin-left:6px; }
+    .stats-card-sub { font-size:0.7rem; font-weight:500; color:var(--text-muted); margin-left:6px; }
     .stats-legend { display:flex; gap:16px; font-size:0.7rem; color:var(--text-muted); margin-top:8px; }
     .stats-legend i { display:inline-block; width:10px; height:3px; border-radius:2px; margin-right:5px; vertical-align:middle; }
     .stats-empty { font-size:0.82rem; color:var(--text-muted); padding:10px 0; }
     .milestone-wrap { display:flex; flex-wrap:wrap; gap:6px; }
     .milestone-chip {
-      font-size:0.72rem; font-weight:600; background:var(--surface2);
+      font-size:0.72rem; font-weight:500; background:var(--surface2);
       border:1px solid rgba(251,191,36,0.25); border-radius:8px; padding:4px 9px;
     }
     .mb-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
@@ -455,9 +474,9 @@
     @keyframes ctd { 0%,60%,100%{ opacity:.3; transform:translateY(0);} 30%{ opacity:1; transform:translateY(-3px);} }
     /* Routine card inside a bot message */
     .coach-routine { align-self:flex-start; background:var(--surface); border:1px solid rgba(79,195,247,0.3); border-radius:14px; padding:14px; max-width:92%; }
-    .coach-routine-name { font-size:0.95rem; font-weight:800; margin-bottom:8px; }
+    .coach-routine-name { font-size:0.95rem; font-weight:700; margin-bottom:8px; }
     .coach-routine-ex { display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; padding:3px 0; color:var(--text-muted); }
-    .coach-routine-ex b { color:var(--text); font-weight:600; }
+    .coach-routine-ex b { color:var(--text); font-weight:500; }
     .coach-routine-btns { display:flex; gap:8px; margin-top:12px; }
     .coach-routine-btns button { flex:1; padding:11px; border:none; border-radius:10px; font-size:0.85rem; font-weight:700; cursor:pointer; }
     .cr-start { background:var(--blue); color:#000; }
@@ -466,7 +485,7 @@
     .coach-chips::-webkit-scrollbar { display:none; }
     .coach-chip {
       background:var(--surface); border:1px solid rgba(255,255,255,0.1); border-radius:18px;
-      color:var(--text); font-size:0.75rem; font-weight:600; padding:7px 12px; cursor:pointer;
+      color:var(--text); font-size:0.75rem; font-weight:500; padding:7px 12px; cursor:pointer;
       white-space:nowrap; flex-shrink:0; -webkit-tap-highlight-color:transparent;
     }
     .coach-chip-key, .coach-chip-clear { padding:7px 11px; color:var(--text-muted); }
@@ -566,7 +585,7 @@
     #historyDetail.visible { transform:translateX(0); }
     .hd-set-row { display:flex; gap:12px; font-size:0.82rem; padding:4px 0; color:var(--text-muted); }
     .hd-set-num { color:var(--text-muted); min-width:20px; }
-    .hd-set-val { color:var(--text); font-weight:600; }
+    .hd-set-val { color:var(--text); font-weight:500; }
     .hd-set-edit { align-items:center; }
     .hd-edit-fields { display:flex; gap:8px; flex:1; }
     .hd-edit-input {
@@ -631,20 +650,20 @@
 <!-- ── Main app ── -->
 <div id="mainApp">
   <div class="page-header">
-    <button class="back-btn" id="homeBtn">←</button>
+    <button class="back-btn" id="homeBtn" data-tip="Dashboard hub" title="Dashboard hub"><i data-lucide="arrow-left" data-size="24"></i></button>
     <h1 class="page-title" id="mainTitle">Gym App</h1>
   </div>
 
   <!-- Dashboard -->
   <div class="section active" id="secDashboard">
-    <button class="start-btn" id="startEmptyBtn">💪 Start Empty Workout</button>
-    <button id="streakChip" title="Streak settings"></button>
+    <button class="start-btn" id="startEmptyBtn"><i data-lucide="dumbbell" data-size="22"></i> Start Empty Workout</button>
+    <button id="streakChip" data-tip="Streak settings" title="Streak settings"></button>
 
     <div class="routines-head">
       <span class="section-heading" style="margin:0">Routines</span>
       <div style="display:flex; gap:8px">
-        <button class="new-routine-btn" id="libraryBtn">📚 Library</button>
-        <button class="new-routine-btn" id="newRoutineBtn">+ New Routine</button>
+        <button class="new-routine-btn" id="libraryBtn"><i data-lucide="book-open" data-size="15"></i> Library</button>
+        <button class="new-routine-btn" id="newRoutineBtn"><i data-lucide="plus" data-size="15"></i> New Routine</button>
       </div>
     </div>
     <div id="templatesList"></div>
@@ -668,9 +687,9 @@
     <div id="statsBody"></div>
 
     <div class="section-heading" style="margin-top:22px">History</div>
-    <button class="import-btn" id="importBtn">📥 Import from Hevy (CSV)</button>
-    <button class="import-btn" id="clearHistoryBtn" style="border-color:rgba(233,69,96,0.4);color:#e94560">🗑 Clear all workout history</button>
-    <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none">⚡ Build Routines from History</button>
+    <button class="import-btn" id="importBtn"><i data-lucide="download" data-size="16"></i> Import from Hevy (CSV)</button>
+    <button class="import-btn" id="clearHistoryBtn" style="border-color:rgba(233,69,96,0.4);color:#e94560"><i data-lucide="trash-2" data-size="16"></i> Clear all workout history</button>
+    <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none"><i data-lucide="zap" data-size="16"></i> Build Routines from History</button>
     <div class="import-progress" id="importProgress"></div>
     <input type="file" id="csvInput" accept=".csv" style="display:none">
     <!-- Routine builder panel -->
@@ -686,24 +705,24 @@
   <div class="section" id="secCoach">
     <div class="coach-thread" id="coachThread"></div>
     <div class="coach-chips" id="coachChips">
-      <button class="coach-chip" data-prompt="Draft me a routine" data-force="1">🏗 Draft a routine</button>
-      <button class="coach-chip" data-prompt="What should I train today?" data-force="1">📅 Today's session</button>
-      <button class="coach-chip" data-prompt="How's my progress? What's lagging and what should I push?">📈 My progress</button>
-      <button class="coach-chip" data-prompt="Review my last workout and suggest what to adjust next time.">🔎 Review last</button>
-      <button class="coach-chip coach-chip-key" id="coachKeyBtn">🔑</button>
-      <button class="coach-chip coach-chip-clear" id="coachClearBtn">🗑</button>
+      <button class="coach-chip" data-prompt="Draft me a routine" data-force="1"><i data-lucide="hammer" data-size="15"></i> Draft a routine</button>
+      <button class="coach-chip" data-prompt="What should I train today?" data-force="1"><i data-lucide="calendar" data-size="15"></i> Today's session</button>
+      <button class="coach-chip" data-prompt="How's my progress? What's lagging and what should I push?"><i data-lucide="chart-line" data-size="15"></i> My progress</button>
+      <button class="coach-chip" data-prompt="Review my last workout and suggest what to adjust next time."><i data-lucide="search" data-size="15"></i> Review last</button>
+      <button class="coach-chip coach-chip-key" id="coachKeyBtn" data-tip="API key" title="API key"><i data-lucide="key" data-size="16"></i></button>
+      <button class="coach-chip coach-chip-clear" id="coachClearBtn" data-tip="Clear chat" title="Clear chat"><i data-lucide="trash-2" data-size="16"></i></button>
     </div>
     <div class="coach-input">
       <input id="coachInput" placeholder="Ask your coach…" autocomplete="off">
-      <button id="coachSend" aria-label="Send">➤</button>
+      <button id="coachSend" aria-label="Send" data-tip="Send" title="Send"><i data-lucide="send" data-size="19"></i></button>
     </div>
   </div>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="Dashboard"><span class="ti">🏠</span>Home</button>
-    <button class="tab" data-tab="Stats"><span class="ti">📈</span>Stats</button>
-    <button class="tab" data-tab="Coach"><span class="ti">🤖</span>Coach</button>
-    <button class="tab" data-tab="Library"><span class="ti">📚</span>Library</button>
+    <button class="tab active" data-tab="Dashboard"><span class="ti" data-lucide="house" data-size="21"></span>Home</button>
+    <button class="tab" data-tab="Stats"><span class="ti" data-lucide="chart-line" data-size="21"></span>Stats</button>
+    <button class="tab" data-tab="Coach"><span class="ti" data-lucide="bot" data-size="21"></span>Coach</button>
+    <button class="tab" data-tab="Library"><span class="ti" data-lucide="book-open" data-size="21"></span>Library</button>
   </nav>
 </div>
 
@@ -711,7 +730,7 @@
 <div id="activeWorkout">
   <div class="aw-header">
     <input class="aw-title-input" id="awTitle" placeholder="Workout name…" maxlength="50">
-    <button class="header-btn" id="awFinishBtn">Finish</button>
+    <button class="header-btn" id="awFinishBtn" data-tip="Finish & save workout" title="Finish & save workout">Finish</button>
   </div>
   <div class="aw-body" id="awBody"></div>
   <div class="aw-footer">
@@ -719,12 +738,12 @@
     <div id="restBar">
       <div id="restBarFill"></div>
       <span class="rest-bar-name" id="restBarName">Rest</span>
-      <button class="rest-bar-step" onclick="bumpRest(-15)">−15</button>
+      <button class="rest-bar-step" onclick="bumpRest(-15)" data-tip="−15 seconds" title="−15 seconds">−15</button>
       <span class="rest-bar-count" id="restBarCount">1:00</span>
-      <button class="rest-bar-step" onclick="bumpRest(15)">+15</button>
+      <button class="rest-bar-step" onclick="bumpRest(15)" data-tip="+15 seconds" title="+15 seconds">+15</button>
       <button class="rest-bar-skip" onclick="skipRest()">Skip</button>
     </div>
-    <button class="add-exercise-btn" id="awAddExBtn">+ Add Exercise</button>
+    <button class="add-exercise-btn" id="awAddExBtn"><i data-lucide="plus" data-size="18"></i> Add Exercise</button>
   </div>
 </div>
 
@@ -746,7 +765,7 @@
 <!-- ── Routine library ── -->
 <div id="routineLibrary">
   <div class="page-header">
-    <button class="back-btn" id="libraryClose">←</button>
+    <button class="back-btn" id="libraryClose" data-tip="Back" title="Back"><i data-lucide="arrow-left" data-size="24"></i></button>
     <h1 class="page-title">Routine Library</h1>
   </div>
   <div id="libraryList" style="padding:0 var(--gap)"></div>
@@ -755,7 +774,7 @@
 <!-- ── Routine library: split detail ── -->
 <div id="libraryDetail">
   <div class="page-header">
-    <button class="back-btn" id="libraryDetailBack">←</button>
+    <button class="back-btn" id="libraryDetailBack" data-tip="Back" title="Back"><i data-lucide="arrow-left" data-size="24"></i></button>
     <h1 class="page-title" id="libraryDetailTitle"></h1>
   </div>
   <div style="padding:0 var(--gap)">
@@ -784,7 +803,7 @@
 <!-- ── History detail ── -->
 <div id="historyDetail">
   <div class="page-header">
-    <button class="back-btn" id="hdBack">←</button>
+    <button class="back-btn" id="hdBack" data-tip="Back" title="Back"><i data-lucide="arrow-left" data-size="24"></i></button>
     <h1 class="page-title" id="hdTitle"></h1>
     <button class="header-btn btn-d" id="hdDelete" style="border:none">Delete</button>
   </div>
@@ -817,7 +836,7 @@
 <!-- ── Form cues modal ── -->
 <div class="modal-backdrop" id="cuesModal">
   <div class="modal">
-    <p class="modal-title"><span style="color:var(--blue)">ⓘ</span> <span id="cuesTitle"></span></p>
+    <p class="modal-title" style="display:flex;align-items:center;gap:7px"><span style="color:var(--blue);display:flex"><i data-lucide="info" data-size="18"></i></span> <span id="cuesTitle"></span></p>
     <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:10px">Form cues</div>
     <ul id="cuesBody" style="margin:0 0 4px 20px;padding:0;font-size:0.92rem;line-height:1.6;color:var(--text)"></ul>
     <div class="modal-btns" style="margin-top:18px">
@@ -833,9 +852,9 @@
 <div class="modal-backdrop" id="exMenuSheet">
   <div class="modal">
     <p class="modal-title" id="exMenuTitle"></p>
-    <button class="sheet-btn" id="exMenuReplace">🔁 Replace exercise…</button>
-    <button class="sheet-btn" id="exMenuReorder">↕️ Reorder exercises</button>
-    <button class="sheet-btn danger" id="exMenuRemove">🗑 Remove from workout</button>
+    <button class="sheet-btn" id="exMenuReplace"><i data-lucide="repeat" data-size="17"></i> Replace exercise…</button>
+    <button class="sheet-btn" id="exMenuReorder"><i data-lucide="arrow-up-down" data-size="17"></i> Reorder exercises</button>
+    <button class="sheet-btn danger" id="exMenuRemove"><i data-lucide="trash-2" data-size="17"></i> Remove from workout</button>
     <button class="sheet-btn" id="exMenuCancel" style="text-align:center;background:none;color:var(--text-muted)">Cancel</button>
   </div>
 </div>
@@ -843,7 +862,7 @@
 <!-- ── Streak settings modal ── -->
 <div class="modal-backdrop" id="streakModal">
   <div class="modal">
-    <p class="modal-title">🔥 Weekly Streak</p>
+    <p class="modal-title" style="display:flex;align-items:center;gap:7px"><span style="color:var(--amber);display:flex"><i data-lucide="flame" data-size="18"></i></span> Weekly Streak</p>
     <div class="form-group">
       <label class="form-label">Workouts per week to keep the streak</label>
       <input class="form-input" id="streakTargetInput" type="number" min="1" max="7" inputmode="numeric">
@@ -863,7 +882,7 @@
 <!-- ── Coach API key modal ── -->
 <div class="modal-backdrop" id="coachKeyModal">
   <div class="modal">
-    <p class="modal-title">🤖 Coach — Anthropic API Key</p>
+    <p class="modal-title" style="display:flex;align-items:center;gap:7px"><span style="color:var(--blue);display:flex"><i data-lucide="bot" data-size="18"></i></span> Coach — Anthropic API Key</p>
     <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:14px;line-height:1.5">
       Powers the AI coach (Claude Sonnet). Get one at console.anthropic.com — about £0.01 per message. Stored on your device.
     </p>
@@ -880,7 +899,7 @@
 <!-- ── Rest-timer preset sheet ── -->
 <div class="modal-backdrop" id="restSheet">
   <div class="modal">
-    <p class="modal-title">⏱ Rest timer</p>
+    <p class="modal-title" style="display:flex;align-items:center;gap:7px"><span style="color:var(--blue);display:flex"><i data-lucide="timer" data-size="18"></i></span> Rest timer</p>
     <div class="rest-preset-grid" id="restPresetGrid">
       <button class="rest-preset" data-secs="0">Off</button>
       <button class="rest-preset" data-secs="30">0:30</button>

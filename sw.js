@@ -1,4 +1,4 @@
-const CACHE = 'life-dashboard-v30';
+const CACHE = 'life-dashboard-v31';
 const PRECACHE = [
   '/life-dashboard/',
   '/life-dashboard/index.html',
@@ -6,6 +6,7 @@ const PRECACHE = [
   '/life-dashboard/shared/db.js',
   '/life-dashboard/shared/supabase.js',
   '/life-dashboard/shared/suggestions.js',
+  '/life-dashboard/shared/icons.js',
   '/life-dashboard/manifest.json',
   '/life-dashboard/icon.png',
   '/life-dashboard/workout/index.html',

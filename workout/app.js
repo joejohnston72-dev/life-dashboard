@@ -10,6 +10,11 @@ import { lifetimeTotals, weeklyVolumeHTML, muscleBalanceHTML,
          exerciseFrequency, progressionHTML, monthlyViewHTML } from './stats.js';
 import { assembleContext, callCoach, validateRoutine } from './coach.js';
 import { resolveRepRange, fetchAIRepRange } from './repRanges.js';
+import { icon, renderIcons } from '../shared/icons.js';
+
+// Paint any static/dynamic `<i data-lucide>` placeholders. Cheap + idempotent,
+// so it's safe to call after every render that may inject new icon markup.
+const refreshIcons = () => renderIcons(document);
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 const { data: { session } } = await supabase.auth.getSession();
@@ -65,6 +70,8 @@ function parseTime(str) {
   return parseInt(str) || 0;   // bare number = seconds
 }
 const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+// Milestone emoji (from achievements.js) → Lucide icon names.
+const MILESTONE_ICONS = { '🏋️': 'dumbbell', '🔥': 'flame', '⚡': 'zap' };
 
 function parseToDate(str) {
   if (!str) return null;
@@ -362,9 +369,15 @@ function buildSetRow(ex, ei, set) {
   tr.innerHTML = `
     <td class="set-num">${si + 1}</td>
     ${cfg.cols.map(c => setInputCell(c, set, ex, ei, prev)).join('')}
-    <td class="set-check-cell"><button class="set-check" data-ei="${ei}" data-set-id="${set.id}">${set.done ? '✓' : ''}</button></td>
+    <td class="set-check-cell"><button class="set-check" data-ei="${ei}" data-set-id="${set.id}">${set.done ? icon('check', { size: 16 }) : ''}</button></td>
   `;
   return tr;
+}
+
+// Target rep-range badge markup (icon + text), shared by the block build and
+// the async AI-lookup patcher so both render identically.
+function repRangeHTML(range) {
+  return range ? `${icon('target', { size: 13 })} Target: ${range.min}–${range.max} reps` : '';
 }
 
 function buildExerciseBlock(ex, ei) {
@@ -382,12 +395,12 @@ function buildExerciseBlock(ex, ei) {
     <div class="ex-block-header" data-ei="${ei}">
       <div class="ex-cat-dot" style="background:${color}"></div>
       <div class="ex-name">${esc(ex.name)}</div>
-      <button class="ex-cue-btn" data-cue="${esc(ex.name)}" aria-label="Form cues">ⓘ</button>
-      <button class="ex-menu-btn" data-ei="${ei}">⋯</button>
+      <button class="ex-cue-btn" data-cue="${esc(ex.name)}" aria-label="Form cues" data-tip="Form cues" title="Form cues">${icon('info', { size: 17 })}</button>
+      <button class="ex-menu-btn" data-ei="${ei}" aria-label="Exercise options" data-tip="Options" title="Options">${icon('ellipsis', { size: 18 })}</button>
     </div>
-    <div class="ex-rep-range" data-ex-name="${esc(ex.name)}">${range ? `🎯 Target: ${range.min}–${range.max} reps` : ''}</div>
+    <div class="ex-rep-range" data-ex-name="${esc(ex.name)}">${repRangeHTML(range)}</div>
     <div class="ex-rest-control">
-      <span class="ex-rest-icon">⏱</span>
+      <span class="ex-rest-icon">${icon('timer', { size: 15 })}</span>
       <span class="ex-rest-label">Rest timer</span>
       <button class="ex-rest-step" data-ei="${ei}" data-delta="-15">−</button>
       <button class="ex-rest-value" data-ei="${ei}" id="restval-${ei}">${fmtRest(ex.restTime ?? 60)}</button>
@@ -400,7 +413,7 @@ function buildExerciseBlock(ex, ei) {
     </table>
     <table class="sets-table"><tbody>
       <tr class="add-set-row"><td colspan="${colspan}">
-        <button class="add-set-mini" data-ei="${ei}">+ Add Set</button>
+        <button class="add-set-mini" data-ei="${ei}">${icon('plus', { size: 14 })} Add Set</button>
       </td></tr>
     </tbody></table>
   `;
@@ -419,6 +432,8 @@ function renderActiveSession() {
     return;
   }
   activeSession.exercises.forEach((ex, ei) => awBody.appendChild(buildExerciseBlock(ex, ei)));
+  refreshAllPBs();   // re-apply trophies to any already-completed sets
+  refreshIcons();    // paint <i data-lucide> placeholders in the fresh blocks
 }
 
 function renumberSetRows(tbody) {
@@ -440,6 +455,9 @@ awBody.addEventListener('input', e => {
     else                           set[field] = parseFloat(t.value) || 0;   // weight
     (set.touched ||= {})[field] = true;
     if (field === 'weight') queueSanityCheck(ex, set, t.closest('.set-row'));
+    // Editing a completed set's weight/reps re-checks its trophy live, so a
+    // mistyped PB disappears the moment the number is corrected.
+    if (!routineMode && set.done && (field === 'weight' || field === 'reps')) refreshExercisePBs(ei);
     saveSoon();
   } else if (t.classList.contains('ex-notes-input')) {
     const ex = activeSession?.exercises[t.dataset.ei];
@@ -555,24 +573,68 @@ function toggleSetDone(ei, setId, rowEl) {
       }
     }
 
-    // PB detection
-    if (!routineMode) {
-      const pbs = detectPBs(ex.name, set, sessionRecords);
-      if (pbs.length) {
-        activeSession.pbs.push(...pbs);
-        rowEl.classList.add('pb');
-        showPbToast(pbs[0]);
-      }
-      absorbSet(ex.name, set, sessionRecords);
-    }
-
     unlockAudio();
     if (!routineMode) startRest(ex.restTime ?? 60, ex.name);
   }
 
   rowEl.classList.toggle('done', set.done);
-  rowEl.querySelector('.set-check').textContent = set.done ? '✓' : '';
+  rowEl.querySelector('.set-check').innerHTML = set.done ? icon('check', { size: 16 }) : '';
+
+  // Re-evaluate PBs for this exercise from the immutable historical baseline.
+  // Because it always recomputes (never accumulates), correcting a typo removes
+  // any trophy it wrongly earned. Fanfare fires only for the set just checked.
+  if (!routineMode) {
+    const res = refreshExercisePBs(ei);
+    if (set.done && res.pbBySet.has(set.id)) showPbToast(res.pbBySet.get(set.id));
+  }
   saveSoon();
+}
+
+// ── PB recomputation (idempotent — trophies track live set values) ────────────
+// sessionRecords stays the immutable historical baseline; each recompute seeds a
+// throwaway copy from it and absorbs the current session's done sets in order,
+// so a set only keeps a trophy while its numbers still beat everything before it.
+function computeExercisePBs(ei) {
+  const ex = activeSession?.exercises[ei];
+  const pbs = [], pbSetIds = new Set(), pbBySet = new Map();
+  if (!ex) return { pbs, pbSetIds, pbBySet };
+  const base = sessionRecords[ex.name];
+  const rec = {};
+  if (base) rec[ex.name] = { maxWeight: base.maxWeight, maxE1rm: base.maxE1rm, repsAtWeight: { ...base.repsAtWeight } };
+  for (const set of ex.sets) {
+    if (!set.done) continue;
+    const found = detectPBs(ex.name, set, rec);
+    if (found.length) { pbs.push(...found); pbSetIds.add(set.id); pbBySet.set(set.id, found[0]); }
+    absorbSet(ex.name, set, rec);
+  }
+  return { pbs, pbSetIds, pbBySet };
+}
+
+function applyPbClasses(ei, pbSetIds) {
+  const tbody = awBody.querySelector(`.sets-body[data-ei="${ei}"]`);
+  if (!tbody) return;
+  tbody.querySelectorAll('.set-row').forEach(row => {
+    row.classList.toggle('pb', pbSetIds.has(row.dataset.setId));
+  });
+}
+
+function refreshExercisePBs(ei) {
+  const ex = activeSession?.exercises[ei];
+  const res = computeExercisePBs(ei);
+  if (ex) activeSession.pbs = (activeSession.pbs || []).filter(p => p.exercise !== ex.name).concat(res.pbs);
+  applyPbClasses(ei, res.pbSetIds);
+  return res;
+}
+
+function refreshAllPBs() {
+  if (!activeSession) return;
+  activeSession.pbs = [];
+  if (routineMode) return;
+  activeSession.exercises.forEach((_, ei) => {
+    const res = computeExercisePBs(ei);
+    activeSession.pbs.push(...res.pbs);
+    applyPbClasses(ei, res.pbSetIds);
+  });
 }
 
 function deleteSet(ei, setId) {
@@ -598,7 +660,7 @@ function toggleDropSet(ei, setId) {
 let pbToastTimer = null;
 function showPbToast(pb) {
   const el = document.getElementById('pbToast');
-  el.innerHTML = `🏆 <strong>PB!</strong> ${esc(pb.exercise)} — ${esc(pb.label)}`;
+  el.innerHTML = `<span style="color:var(--amber);display:inline-flex;vertical-align:-0.2em;margin-right:4px">${icon('trophy', { size: 18 })}</span><strong>PB!</strong> ${esc(pb.exercise)} — ${esc(pb.label)}`;
   el.classList.add('visible');
   clearTimeout(pbToastTimer);
   pbToastTimer = setTimeout(() => el.classList.remove('visible'), 3500);
@@ -710,7 +772,7 @@ function enterReorderMode() {
         <div class="reorder-card" data-ei="${ei}">
           <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[ex.category]||'#888'}"></span>
           <span class="reorder-name">${esc(ex.name)}</span>
-          <span class="reorder-grip">☰</span>
+          <span class="reorder-grip">${icon('grip-horizontal', { size: 18 })}</span>
         </div>`).join('')}
     </div>
     <button class="reorder-done" id="reorderDone">Done</button>
@@ -903,6 +965,7 @@ function finishWarnings() {
 
 function showWorkoutSummary() {
   skipRest();
+  refreshAllPBs();   // ensure the PB count reflects the final, corrected numbers
   const title = document.getElementById('awTitle').value.trim() || 'Workout';
   activeSession.title = title;
 
@@ -917,12 +980,13 @@ function showWorkoutSummary() {
     <div class="stat-box"><div class="stat-val">${fmtTime(sessionSecsNow())}</div><div class="stat-label">Duration</div></div>
     <div class="stat-box"><div class="stat-val">${doneSets.length}</div><div class="stat-label">Sets</div></div>
     <div class="stat-box"><div class="stat-val">${Math.round(volume).toLocaleString()}</div><div class="stat-label">Volume kg</div></div>
-    <div class="stat-box"><div class="stat-val">${pbCount ? '🏆 ' + pbCount : '—'}</div><div class="stat-label">PBs</div></div>
+    <div class="stat-box"><div class="stat-val">${pbCount ? `<span style="color:var(--amber);display:inline-flex;vertical-align:-0.15em">${icon('trophy', { size: 17 })}</span> ` + pbCount : '—'}</div><div class="stat-label">PBs</div></div>
   `;
 
   const warnings = finishWarnings();
+  const warnIcon = `<span style="color:var(--amber);display:inline-flex;vertical-align:-0.2em;margin-right:4px">${icon('triangle-alert', { size: 15 })}</span>`;
   document.getElementById('summaryWarnings').innerHTML = warnings.length
-    ? `<div class="summary-warn-box">⚠️ ${warnings.map(esc).join('<br>⚠️ ')}<br><span>Check before saving, or save anyway.</span></div>`
+    ? `<div class="summary-warn-box">${warnings.map(w => warnIcon + esc(w)).join('<br>')}<br><span>Check before saving, or save anyway.</span></div>`
     : '';
 
   document.getElementById('summaryExercises').innerHTML =
@@ -963,6 +1027,7 @@ async function saveWorkout() {
       sets: e.sets.map(({ touched, tW, tR, ...s }) => s), // strip transient fields
     })),
   };
+  await ensureExercisesInRepo(session.exercises);   // catalogue anything new
   await db.set(STORE, 'session-' + session.id, session);
   await clearActiveSessionStore();
   backfillDate = null;
@@ -1075,7 +1140,7 @@ function finishRest() {
   const bar = document.getElementById('restBar');
   if (bar) {
     bar.classList.add('flash', 'done-state');            // pulses until dismissed
-    document.getElementById('restBarName').textContent = '✅ Rest done — next set!';
+    document.getElementById('restBarName').innerHTML = `${icon('circle-check', { size: 15 })} Rest done — next set!`;
   }
   playChime();
   try { navigator.vibrate?.([300,120,300,120,300]); } catch(_) {}
@@ -1280,6 +1345,39 @@ async function addExerciseToSession(name, category) {
     prevSets,
     sets: [freshSet(null, prevSets, 0)],
   });
+  ensureExercisesInRepo([{ name, category, logType }]);  // catalogue it for reuse
+}
+
+// Guarantee every exercise passed is present in the exercise repository. Anything
+// added during a workout — picked, coach-drafted, from a prefilled routine, or
+// Hevy-imported — becomes selectable next time and shows in the Library. Built-in
+// exercises are left untouched; only genuinely new names get catalogued (custom).
+async function ensureExercisesInRepo(exercises) {
+  if (!exercises?.length) return;
+  const custom = (await db.get(STORE, 'exercises-custom')) || [];
+  const known = new Set([
+    ...EXERCISES.map(e => e.name.toLowerCase()),
+    ...custom.map(e => e.name.toLowerCase()),
+  ]);
+  const added = [];
+  for (const ex of exercises) {
+    const name = (ex.name || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (known.has(key)) continue;
+    known.add(key);
+    const entry = {
+      id: uid(), name,
+      category: ex.category || guessCategory(name),
+      logType: ex.logType || exLogType(name, ex.category),
+      custom: true,
+    };
+    custom.push(entry);
+    added.push(entry);
+  }
+  if (!added.length) return;
+  await db.set(STORE, 'exercises-custom', custom);
+  added.forEach(lookupRepRangeForCustom);   // background AI rep-range fill
 }
 
 // Most recent past performance of an exercise, from a preloaded session list.
@@ -1324,7 +1422,7 @@ document.getElementById('customExSave').onclick = async () => {
 function patchRepRangeBadge(name, range) {
   if (!range) return;
   document.querySelectorAll('.ex-rep-range').forEach(el => {
-    if (el.dataset.exName === name) el.textContent = `🎯 Target: ${range.min}–${range.max} reps`;
+    if (el.dataset.exName === name) el.innerHTML = repRangeHTML(range);
   });
   if (activeSession) {
     for (const ex of activeSession.exercises) if (ex.name === name) ex.repRange = range;
@@ -1506,9 +1604,10 @@ async function renderStreakChip(sessions) {
   const { weeks, thisWeekCount, target } = computeStreak(sessions, settings);
   const el = document.getElementById('streakChip');
   if (!el) return;
+  const flame = `<span style="color:var(--amber);display:inline-flex;vertical-align:-0.2em">${icon('flame', { size: 16 })}</span>`;
   el.innerHTML = weeks > 0
-    ? `🔥 <strong>${weeks}-week streak</strong> · ${thisWeekCount}/${target} this week`
-    : `${thisWeekCount}/${target} workouts this week`;
+    ? `${flame} <strong>${weeks}-week streak</strong> · ${thisWeekCount}/${target} this week`
+    : `${flame} ${thisWeekCount}/${target} workouts this week`;
 }
 
 document.getElementById('streakChip').onclick = async () => {
@@ -1533,8 +1632,24 @@ document.getElementById('streakSave').onclick = async () => {
   renderStreakChip(await loadSessions());
 };
 
+// ── Skeleton loaders (shown while IndexedDB/stats resolve) ────────────────────
+function skeletonCards(n = 2) {
+  return Array.from({ length: n }, () =>
+    `<div class="skeleton" style="height:78px;margin-bottom:10px;border-radius:var(--radius)"></div>`).join('');
+}
+function statsSkeleton() {
+  return `
+    <div class="skeleton" style="height:190px;margin-bottom:12px;border-radius:var(--radius)"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${Array.from({ length: 5 }, () => '<div class="skeleton" style="flex:1;height:58px"></div>').join('')}
+    </div>
+    <div class="skeleton" style="height:150px;border-radius:var(--radius)"></div>`;
+}
+
 // ── Dashboard render ──────────────────────────────────────────────────────────
 async function renderDashboard() {
+  const recentEl0 = document.getElementById('recentList');
+  if (recentEl0 && !recentEl0.children.length) recentEl0.innerHTML = skeletonCards(2);
   const templates = await getTemplates();
   const tmplEl = document.getElementById('templatesList');
   document.getElementById('routinesEmpty').style.display = templates.length ? 'none' : '';
@@ -1544,7 +1659,7 @@ async function renderDashboard() {
         <div class="tc-name">${esc(t.name)}</div>
         <div class="tc-ex">${t.exercises.map(e=>esc(e.name)).join(' · ')}</div>
       </div>
-      <button class="tc-del" data-del="${t.id}">✕</button>
+      <button class="tc-del" data-del="${t.id}" aria-label="Delete routine" data-tip="Delete routine" title="Delete routine">${icon('x', { size: 15 })}</button>
     </div>
   `).join('');
   tmplEl.querySelectorAll('.template-card').forEach(card => {
@@ -1586,7 +1701,7 @@ function workoutCard(s) {
   return `
     <div class="workout-card" data-sid="${s.id}">
       <div class="wc-header">
-        <span class="wc-title">${esc(s.title||'Workout')}${pbCount ? ` <span class="wc-pb">🏆 ${pbCount}</span>` : ''}</span>
+        <span class="wc-title">${esc(s.title||'Workout')}${pbCount ? ` <span class="wc-pb">${icon('trophy', { size: 12 })} ${pbCount}</span>` : ''}</span>
         <span class="wc-date">${fmtDate(s.date||s.startTime||'')}</span>
       </div>
       <div class="wc-meta">${fmtTime(s.duration||0)} · ${(s.exercises||[]).length} exercises · ${Math.round(vol).toLocaleString()} kg</div>
@@ -1599,6 +1714,7 @@ let statsExercise = null;
 let statsMonth = null; // { y, m } — defaults to current month
 async function renderStats() {
   const el = document.getElementById('statsBody');
+  if (el && !el.children.length) el.innerHTML = statsSkeleton();
   const sessions = await loadSessions();
   if (!sessions.length) {
     el.innerHTML = `<div class="empty-state">No workouts yet — stats appear after your first logged session.</div>`;
@@ -1626,14 +1742,14 @@ async function renderStats() {
       <div class="stat-box"><div class="stat-val">${totals.workouts}</div><div class="stat-label">Workouts</div></div>
       <div class="stat-box"><div class="stat-val">${totals.hours.toFixed(0)}h</div><div class="stat-label">Trained</div></div>
       <div class="stat-box"><div class="stat-val">${(totals.volume/1000).toFixed(1)}t</div><div class="stat-label">Lifted</div></div>
-      <div class="stat-box"><div class="stat-val">🔥 ${streak.weeks}</div><div class="stat-label">Wk streak</div></div>
-      <div class="stat-box"><div class="stat-val">🏆 ${trophies}</div><div class="stat-label">Trophies</div></div>
+      <div class="stat-box"><div class="stat-val"><span style="color:var(--amber);display:inline-flex;vertical-align:-0.15em">${icon('flame', { size: 17 })}</span> ${streak.weeks}</div><div class="stat-label">Wk streak</div></div>
+      <div class="stat-box"><div class="stat-val"><span style="color:var(--amber);display:inline-flex;vertical-align:-0.15em">${icon('trophy', { size: 17 })}</span> ${trophies}</div><div class="stat-label">Trophies</div></div>
     </div>
 
     ${miles.earned.length ? `
       <div class="stats-card">
         <div class="stats-card-title">Milestones</div>
-        <div class="milestone-wrap">${miles.earned.map(m => `<span class="milestone-chip">${m.icon} ${esc(m.label)}</span>`).join('')}</div>
+        <div class="milestone-wrap">${miles.earned.map(m => `<span class="milestone-chip"><span style="color:var(--amber);display:inline-flex;vertical-align:-0.18em">${icon(MILESTONE_ICONS[m.icon] || 'award', { size: 14 })}</span> ${esc(m.label)}</span>`).join('')}</div>
       </div>` : ''}
 
     ${weeklyVolumeHTML(chrono)}
@@ -1776,11 +1892,11 @@ function renderHistoryDetailBody() {
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
       <div class="stat-box" id="hdDateBox" style="background:var(--surface);border-radius:10px;padding:10px 14px;min-width:80px;text-align:center;cursor:pointer">
         <div class="stat-val">${fmtDate(s.date||s.startTime||'')}</div>
-        <div class="stat-label">Date ✎</div>
+        <div class="stat-label">Date ${icon('pencil', { size: 11 })}</div>
       </div>
       <div class="stat-box" id="hdDurBox" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center;cursor:pointer">
         <div class="stat-val">${fmtTime(s.duration||0)}</div>
-        <div class="stat-label">Duration ✎</div>
+        <div class="stat-label">Duration ${icon('pencil', { size: 11 })}</div>
       </div>
       <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center">
         <div class="stat-val">${Math.round(vol).toLocaleString()}</div>
@@ -1788,15 +1904,15 @@ function renderHistoryDetailBody() {
       </div>
       ${pbCount ? `
       <div class="stat-box" style="background:var(--surface);border-radius:10px;padding:10px 14px;text-align:center">
-        <div class="stat-val">🏆 ${pbCount}</div>
+        <div class="stat-val"><span style="color:var(--amber);display:inline-flex;vertical-align:-0.15em">${icon('trophy', { size: 16 })}</span> ${pbCount}</div>
         <div class="stat-label">PBs</div>
       </div>` : ''}
     </div>
-    ${pbCount ? `<div class="hd-pb-list">${s.pbs.map(p => `<div>🏆 ${esc(p.exercise)} — ${esc(p.label)}</div>`).join('')}</div>` : ''}
+    ${pbCount ? `<div class="hd-pb-list">${s.pbs.map(p => `<div><span style="color:var(--amber);display:inline-flex;vertical-align:-0.2em;margin-right:4px">${icon('trophy', { size: 14 })}</span>${esc(p.exercise)} — ${esc(p.label)}</div>`).join('')}</div>` : ''}
     ${(s.exercises||[]).map((ex, ei) => `
       <div style="background:var(--surface);border-radius:12px;padding:14px;margin-bottom:10px;border-left:4px solid ${CATEGORY_COLORS[ex.category]||'#4fc3f7'}">
         <div style="font-size:0.95rem;font-weight:700;margin-bottom:10px">${esc(ex.name)}</div>
-        ${ex.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);margin:-6px 0 8px">📝 ${esc(ex.notes)}</div>` : ''}
+        ${ex.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);margin:-6px 0 8px;display:flex;gap:5px;align-items:flex-start">${icon('notebook-pen', { size: 13 })} <span>${esc(ex.notes)}</span></div>` : ''}
         ${hdEditMode
           ? (ex.sets||[]).map((st, si) => `
             <div class="hd-set-row hd-set-edit">
@@ -1818,7 +1934,7 @@ function renderHistoryDetailBody() {
   if (hdEditMode) {
     const saveBtn = document.createElement('button');
     saveBtn.className = 'header-btn primary';
-    saveBtn.textContent = '✓ Save changes';
+    saveBtn.innerHTML = `${icon('check', { size: 15 })} Save changes`;
     saveBtn.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border-radius:10px;font-size:0.9rem;cursor:pointer;';
     saveBtn.onclick = saveHistoryEdits;
     body.appendChild(saveBtn);
@@ -1831,7 +1947,7 @@ function renderHistoryDetailBody() {
   } else {
     const editBtn = document.createElement('button');
     editBtn.className = 'header-btn';
-    editBtn.textContent = '✎ Edit sets';
+    editBtn.innerHTML = `${icon('pencil', { size: 14 })} Edit sets`;
     editBtn.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(79,195,247,0.4);color:var(--blue);font-size:0.9rem;font-weight:700;cursor:pointer;';
     editBtn.onclick = () => { hdEditMode = true; renderHistoryDetailBody(); };
     body.appendChild(editBtn);
@@ -1971,7 +2087,7 @@ document.getElementById('buildRoutinesBtn').onclick = async () => {
     return `
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)" data-title="${esc(title)}" data-sid="${s.id}">
         <div style="flex:1">
-          <div style="font-size:0.9rem;font-weight:600">${esc(title)}</div>
+          <div style="font-size:0.9rem;font-weight:500">${esc(title)}</div>
           <div style="font-size:0.72rem;color:var(--text-muted)">${s.exercises.map(e=>esc(e.name)).join(' · ')}</div>
         </div>
         <button class="routine-save-btn" data-title="${esc(title)}" data-sid="${s.id}"
@@ -2017,7 +2133,7 @@ async function renderLibrary() {
       <div class="lib-item" data-cue="${esc(e.name)}">
         <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[cat]||'#888'}"></span>
         <span class="lib-name">${esc(e.name)}</span>
-        ${resolveCues(e.name) ? '<span class="lib-cue-hint">ⓘ form</span>' : ''}
+        ${resolveCues(e.name) ? `<span class="lib-cue-hint">${icon('info', { size: 12 })} form</span>` : ''}
         ${e.custom ? '<span class="lib-custom-badge">Custom</span>' : ''}
       </div>
     `).join('')}
@@ -2217,9 +2333,10 @@ function parseCommaCSV(text) {
   const homeBtn = document.getElementById('homeBtn');
   if (!homeBtn) return;
   if (standalone) {
-    homeBtn.textContent = '⌂';
+    homeBtn.innerHTML = icon('house', { size: 22 });
     homeBtn.onclick = () => { location.href = '../'; };
     homeBtn.title = 'Dashboard hub';
+    homeBtn.setAttribute('data-tip', 'Dashboard hub');
   } else {
     homeBtn.onclick = () => history.back();
   }
@@ -2287,8 +2404,8 @@ function renderRoutineCard(routine) {
       <div class="coach-routine-ex"><b>${esc(e.name)}</b><span>${e.sets.length}×${e.sets[0]?.reps ?? ''}${e.category === 'Cardio' ? ' min' : ''}</span></div>
     `).join('')}
     <div class="coach-routine-btns">
-      <button class="cr-start">▶ Start workout</button>
-      <button class="cr-save">＋ Save as routine</button>
+      <button class="cr-start">${icon('play', { size: 15 })} Start workout</button>
+      <button class="cr-save">${icon('plus', { size: 15 })} Save as routine</button>
     </div>`;
   card.querySelector('.cr-start').onclick = () => { startEmptyWorkout(routine); };
   card.querySelector('.cr-save').onclick  = () => saveTemplate(routine.name, routine.exercises);
@@ -2410,6 +2527,7 @@ document.getElementById('coachKeySave').onclick = async () => {
 await seedMyRoutinesOnce();
 await fixIncompletePushDayOnce();
 await checkForAbandonedSession();
+refreshIcons();   // paint the static tab-bar / header / chip icon placeholders
 renderDashboard();
 renderHistory();
 backfillCustomRepRanges(); // background — fills in AI rep ranges for any custom exercise missing one
