@@ -41,8 +41,15 @@
     .header-btn.danger  { background: var(--red);  border-color: var(--red);  color: #fff; font-weight: 700; }
 
     .tabs {
-      position: fixed; bottom: env(safe-area-inset-bottom); left:0; right:0;
-      height: 56px; background: var(--surface); display: flex;
+      /* Anchor to the very bottom edge and let the bar's background fill down
+         through the home-indicator safe area — otherwise `bottom: safe-area`
+         lifts the bar ~34px up on notch/Dynamic-Island iPhones and the page
+         shows through the transparent strip beneath it. Buttons stay in the top
+         56px (above the home indicator); the padding-bottom is just backing. */
+      position: fixed; bottom: 0; left:0; right:0;
+      height: calc(56px + env(safe-area-inset-bottom));
+      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--surface); display: flex;
       border-top: 1px solid rgba(255,255,255,0.07); z-index: 10;
     }
     .tab {

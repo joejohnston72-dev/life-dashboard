@@ -10,7 +10,7 @@ wasn't asked for.)
 - **Deploy:** `git push` to `main` → GitHub Pages. `gh` at `~/bin/gh`. `.nojekyll` present.
   Pages builds are sometimes **stuck in "building"** for hours — retrigger with
   `gh api -X POST repos/joejohnston72-dev/life-dashboard/pages/builds` and poll
-  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v31**.
+  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v32**.
 - **Stack:** vanilla JS ES modules, **no build step**. IndexedDB local-first (`shared/db.js`) + Supabase sync + auth.
 - **Auth:** Supabase email **OTP code** (not magic link). Session faked in preview via `localStorage['sb-xjcnkivlkfzdycbyxxlx-auth-token']`.
 - **Service worker:** network-first + `cache:'no-cache'`; auto-updates (polls every 60s, reloads on controllerchange). If updates won't land: delete PWA + re-add.
@@ -63,6 +63,7 @@ wasn't asked for.)
 - No build — edit, commit, push. Bump `sw.js` CACHE. Commit trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - Inputs must be ≥16px (iOS zoom). Viewport has `maximum-scale=1,user-scalable=no`. `touch-action:manipulation`. Set rows/inputs `touch-action:pan-y` (swipes).
 - Sections need bottom padding for the fixed 56px tab bar: `.section { padding: 0 var(--gap) calc(env(safe-area-inset-bottom)+72px); }`.
+- **Tab bar (`.tabs`) must anchor `bottom:0` with `height: calc(56px + env(safe-area-inset-bottom))` + `padding-bottom: env(safe-area-inset-bottom)`** — NOT `bottom: env(safe-area-inset-bottom)`, which lifts the bar ~34px off the bottom on home-indicator iPhones and lets the scrolling page show through the transparent strip beneath it. Buttons live in the top 56px (above the home indicator); the padding is opaque backing. Its top edge stays at `56px + inset`, so `#secCoach.active` (`bottom: calc(56px + env(safe-area-inset-bottom))`) and `#miniBar` (`bottom: calc(env(safe-area-inset-bottom) + 58px)`) still align.
 - Dynamic Island / native home-screen widgets / live audio while backgrounded: **impossible in a PWA** (communicated + declined).
 - `esc()` (in both `app.js` and `stats.js`) escapes quotes as well as `<>&` — exercise names are free-typed user input and get interpolated into HTML attributes (`data-cue="..."`, `data-name="..."`) in several places, so don't regress this back to an `<>&`-only escaper.
 - The `DURATION_NAMES` regex (app.js) intentionally does **not** match bare `hang` — only `dead hang` — because bare `hang` false-matched "Leg Raise (Hanging)" and forced a rep-based exercise into time-tracking.
