@@ -113,7 +113,6 @@ export const REP_RANGES = {
   'Bench Press (Smith Machine)':        [6, 10],
   'Incline Bench Press (Smith Machine)':[6, 10],
   'Decline Bench Press (Dumbbell)':     [8, 12],
-  'Chest Press (Machine)':              [8, 12],
   'Incline Chest Press (Machine)':      [8, 12],
   'Incline Chest Fly (Dumbbell)':       [10, 15],
   'Chest Fly (Machine)':                [10, 15],
@@ -193,7 +192,6 @@ export const REP_RANGES = {
   'Hip Thrust (Smith Machine)':         [8, 12],
   'Glute Bridge':                       [10, 15],
   'Glute Kickback (Machine)':           [12, 15],
-  'Hip Abduction (Machine)':            [12, 20],
   'Hip Abduction (Cable)':              [12, 20],
   'Hip Adduction (Machine)':            [12, 20],
   // Calves
