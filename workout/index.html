@@ -117,13 +117,23 @@
 
     .empty-state { text-align:center;color:var(--text-muted);padding:30px 0;font-size:0.88rem;line-height:1.7; }
 
-    /* Stop the page behind the active-workout overlay from scrolling. Just
-       overflow:hidden — NOT position:fixed. The overlay now always covers the
-       full screen (fitActiveWorkout only pads its bottom, never shrinks it), so
-       nothing behind can show through anyway; pinning the body with
-       position:fixed and un-pinning it on close was leaving iOS momentum-scroll
-       in a janky state (the tab bar drifted up on swipe after closing). */
-    body.workout-open { overflow: hidden; }
+    /* Scroll-lock behind the active-workout overlay — the reliable iOS technique
+       (see app.js lockBodyScroll/unlockBodyScroll). The overlay is position:fixed,
+       and on iOS an overscroll/rubber-band of the *root* document drags fixed
+       elements with it — that's what let a swipe at the bottom of the workout
+       lift the overlay and reveal the dashboard beneath. overflow:hidden alone
+       doesn't stop iOS touch-scrolling the root; the fix is to pin the body at
+       its current scroll offset (inline `top:-scrollY`) so there is NO scrollable
+       root left to rubber-band. The exact offset is restored on unlock, so there
+       is no scroll-jump or momentum jank on open/close (the bug the naive,
+       restore-less position:fixed had). */
+    html { overscroll-behavior: none; }
+    body.scroll-locked {
+      position: fixed;
+      left: 0; right: 0;
+      width: 100%;
+      overflow: hidden;
+    }
 
     /* ── Active workout overlay ── */
     #activeWorkout {

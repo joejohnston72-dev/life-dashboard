@@ -261,9 +261,49 @@ function openActiveWorkout() {
   document.getElementById('miniBar').classList.remove('visible');
   document.getElementById('activeWorkout').classList.add('visible');
   document.getElementById('awTitle').value = activeSession?.title || '';
-  document.body.classList.add('workout-open');   // lock background scroll (tabs can't peek)
+  syncScrollLock();   // pin the page so an overscroll can't lift the overlay
   fitActiveWorkout();
 }
+
+// ── iOS-reliable scroll lock ─────────────────────────────────────────────────
+// The battle-tested fix (position:fixed + scroll save/restore): pin the body at
+// its current offset so there is NO scrollable root to rubber-band — which is
+// what let a swipe at the bottom of the workout drag the fixed overlay up and
+// reveal the dashboard beneath. `overflow:hidden` alone does NOT stop iOS from
+// touch-scrolling the root; and a naive position:fixed toggle jumps the scroll
+// and janks momentum on close, so we store the exact offset and restore it.
+//
+// It's driven CENTRALLY: the lock is on whenever *any* full-screen overlay or
+// modal is open, recomputed from the DOM by syncScrollLock(). A MutationObserver
+// on class changes keeps it in sync through every open/close path, so this can't
+// drift out of balance and future overlays are covered for free. Dynamically
+// created modals (which set their class at creation, not via a toggle) call
+// syncScrollLock() explicitly.
+let lockedScrollY = 0;
+function lockBodyScroll() {
+  if (document.body.classList.contains('scroll-locked')) return;
+  lockedScrollY = window.scrollY || window.pageYOffset || 0;
+  document.body.style.top = `-${lockedScrollY}px`;
+  document.body.classList.add('scroll-locked');
+}
+function unlockBodyScroll() {
+  if (!document.body.classList.contains('scroll-locked')) return;
+  document.body.classList.remove('scroll-locked');
+  document.body.style.top = '';
+  window.scrollTo(0, lockedScrollY);
+}
+const OVERLAY_OPEN_SELECTOR =
+  '#activeWorkout.visible, #exercisePicker.visible, #routineLibrary.visible, ' +
+  '#libraryDetail.visible, #historyDetail.visible, #workoutSummary.visible, .modal-backdrop.open';
+function syncScrollLock() {
+  if (document.querySelector(OVERLAY_OPEN_SELECTOR)) lockBodyScroll();
+  else unlockBodyScroll();
+}
+let scrollSyncRaf = 0;
+new MutationObserver(() => {
+  cancelAnimationFrame(scrollSyncRaf);
+  scrollSyncRaf = requestAnimationFrame(syncScrollLock);
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true });
 
 // Keyboard handling. The overlay ALWAYS stays full-screen (inset:0) — a shrunk
 // overlay was the whole bug: any strip it didn't cover let the dashboard behind
@@ -296,7 +336,7 @@ function unfitActiveWorkout() {
   const aw = document.getElementById('activeWorkout');
   aw.style.paddingBottom = '';
   lastKb = -1;
-  document.body.classList.remove('workout-open');
+  syncScrollLock();
 }
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', fitActiveWorkout);
@@ -746,6 +786,8 @@ function openSupersetPicker(ei) {
     </div>
   </div>`;
   document.body.appendChild(back);
+  syncScrollLock();
+  const close = () => { back.remove(); syncScrollLock(); };
   back.addEventListener('click', e => {
     const pick = e.target.closest('.ss-pick');
     if (pick) {
@@ -755,9 +797,9 @@ function openSupersetPicker(ei) {
       return;
     }
     const act = e.target.closest('[data-act]')?.dataset.act;
-    if (e.target === back || act === 'cancel') { back.remove(); return; }
-    if (act === 'ungroup') { back.remove(); ungroupSuperset(ei); return; }
-    if (act === 'done')    { back.remove(); applySuperset(ei, [...selected]); return; }
+    if (e.target === back || act === 'cancel') { close(); return; }
+    if (act === 'ungroup') { close(); ungroupSuperset(ei); return; }
+    if (act === 'done')    { close(); applySuperset(ei, [...selected]); return; }
   });
 }
 
@@ -1931,11 +1973,13 @@ function openDayChooser(dateStr, list) {
     <button class="sheet-btn" data-cancel="1" style="text-align:center;background:none;color:var(--text-muted)">Cancel</button>
   </div>`;
   document.body.appendChild(back);
+  syncScrollLock();
+  const close = () => { back.remove(); syncScrollLock(); };   // observer can't see removals
   back.addEventListener('click', e => {
     const btn = e.target.closest('button');
-    if (e.target === back || btn?.dataset.cancel) { back.remove(); return; }
-    if (btn?.dataset.sid) { back.remove(); openHistoryDetail(btn.dataset.sid); return; }
-    if (btn?.dataset.add) { back.remove(); startEmptyWorkout(null, dateStr); }
+    if (e.target === back || btn?.dataset.cancel) { close(); return; }
+    if (btn?.dataset.sid) { close(); openHistoryDetail(btn.dataset.sid); return; }
+    if (btn?.dataset.add) { close(); startEmptyWorkout(null, dateStr); }
   });
 }
 
