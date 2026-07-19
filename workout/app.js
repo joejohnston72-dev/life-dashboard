@@ -417,7 +417,7 @@ function buildSetRow(ex, ei, set) {
   tr.dataset.ei = ei;
   tr.dataset.setId = set.id;
   tr.innerHTML = `
-    <td class="set-num">${si + 1}</td>
+    <td class="set-num" title="Tap to cycle: warm-up → drop set → normal">${si + 1}</td>
     ${cfg.cols.map(c => setInputCell(c, set, ex, ei, prev)).join('')}
     <td class="set-check-cell"><button class="set-check" data-ei="${ei}" data-set-id="${set.id}">${set.done ? icon('check', { size: 16 }) : ''}</button></td>
   `;
@@ -443,7 +443,7 @@ function buildExerciseBlock(ex, ei) {
   if (inSS) block.classList.add('ss-member');
   if (firstOfGroup) block.classList.add('ss-first');
   if (lastOfGroup)  block.classList.add('ss-last');
-  const color = CATEGORY_COLORS[ex.category] || '#888';
+  const color = CATEGORY_COLORS[ex.category] || '#8e8e9a';
   const lt = resolveLogType(ex);
   const cfg = LOGTYPES[lt];
   const headCols = cfg.head.map(h => `<th>${h}</th>`).join('');
@@ -485,6 +485,7 @@ function buildExerciseBlock(ex, ei) {
 function renderActiveSession() {
   awBody.innerHTML = '';
   if (!activeSession) return;
+  normalizeSupersets();   // keep groups contiguous through removes/reorders
   if (activeSession.exercises.length === 0) {
     awBody.innerHTML = `<div class="empty-state" style="padding-top:60px">
       Tap <strong>Add Exercise</strong> below to get started.
@@ -526,6 +527,26 @@ awBody.addEventListener('input', e => {
 });
 
 awBody.addEventListener('click', e => {
+  // Tap the set number to cycle its type: normal → warmup → dropset → normal.
+  // (Swipe-right still toggles drop set; this adds a discoverable path and the
+  // only way to mark a warm-up mid-workout.)
+  const numCell = e.target.closest('.set-num');
+  if (numCell) {
+    const row = numCell.closest('.set-row');
+    if (row && !row.classList.contains('removing')) {
+      const { set } = findSet(row.dataset.ei, row.dataset.setId);
+      if (set) {
+        set.type = set.type === 'normal' ? 'warmup' : set.type === 'warmup' ? 'dropset' : 'normal';
+        row.classList.toggle('set-warmup',  set.type === 'warmup');
+        row.classList.toggle('set-dropset', set.type === 'dropset');
+        saveSoon();
+      }
+    }
+    return;
+  }
+  // Tap the exercise name for a quick history peek (last sessions of this lift).
+  const nameEl = e.target.closest('.ex-name');
+  if (nameEl) { openExerciseHistorySheet(nameEl.textContent); return; }
   const check = e.target.closest('.set-check');
   if (check) {
     // If a swipe revealed the delete button, this cell hosts it instead
@@ -750,9 +771,66 @@ function checkWeightSanity(ex, set, rowEl) {
   rowEl.after(tr);
 }
 
+// ── Exercise history peek (tap the name in the active workout) ────────────────
+async function openExerciseHistorySheet(name) {
+  const past = await loadSessions();
+  const entries = [];
+  for (const s of past) {
+    if (s.id === activeSession?.id) continue;
+    const ex = (s.exercises || []).find(e => e.name === name);
+    if (!ex) continue;
+    const sets = (ex.sets || []).filter(st => st.done || st.weight || st.reps || st.duration || st.distance);
+    if (!sets.length) continue;
+    entries.push({ date: s.date || (s.startTime || '').slice(0, 10), ex, sets });
+    if (entries.length >= 6) break;
+  }
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop open';
+  back.innerHTML = `<div class="modal">
+    <p class="modal-title" style="display:flex;align-items:center;gap:7px"><span style="color:var(--blue);display:flex">${icon('chart-line', { size: 17 })}</span>${esc(name)}</p>
+    <div style="max-height:50vh;overflow-y:auto">
+    ${entries.length ? entries.map(en => `
+      <div class="exh-row">
+        <div class="exh-date">${fmtDate(en.date)}</div>
+        <div class="exh-sets">${en.sets.map(st => esc(setPrevText(resolveLogType(en.ex), st))).join(' · ')}</div>
+      </div>`).join('')
+    : '<div class="empty-state" style="padding:14px 0">No previous sessions with this exercise yet.</div>'}
+    </div>
+    <div class="modal-btns"><button class="btn btn-p" data-close>Close</button></div>
+  </div>`;
+  document.body.appendChild(back);
+  syncScrollLock();
+  back.addEventListener('click', e => {
+    if (e.target === back || e.target.closest('[data-close]')) { back.remove(); syncScrollLock(); }
+  });
+}
+
 // ── Supersets ─────────────────────────────────────────────────────────────────
 // Contiguous exercises that share a supersetId are performed back-to-back; rest
 // only fires after the last member (see toggleSetDone).
+// Repair superset ids after any structural edit (remove / reorder / replace):
+// each maximal contiguous run keeps its id, singletons dissolve, and a gid that
+// reappears in a later, separated run gets a fresh id — so groups are always
+// valid unbroken blocks no matter how the list was rearranged.
+function normalizeSupersets() {
+  const list = activeSession?.exercises || [];
+  const seen = new Set();
+  let i = 0;
+  while (i < list.length) {
+    const gid = list[i].supersetId;
+    if (!gid) { i++; continue; }
+    let j = i;
+    while (j < list.length && list[j].supersetId === gid) j++;
+    if (j - i === 1) delete list[i].supersetId;
+    else if (seen.has(gid)) {
+      const ng = 'ss' + uid();
+      for (let k = i; k < j; k++) list[k].supersetId = ng;
+      seen.add(ng);
+    } else seen.add(gid);
+    i = j;
+  }
+}
+
 function isLastSupersetMember(ei) {
   const ex = activeSession?.exercises[+ei];
   if (!ex?.supersetId) return true;
@@ -927,7 +1005,7 @@ function enterReorderMode() {
     <div id="reorderList">
       ${activeSession.exercises.map((ex, ei) => `
         <div class="reorder-card" data-ei="${ei}">
-          <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[ex.category]||'#888'}"></span>
+          <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[ex.category]||'#8e8e9a'}"></span>
           <span class="reorder-name">${esc(ex.name)}</span>
           <span class="reorder-grip">${icon('grip-horizontal', { size: 18 })}</span>
         </div>`).join('')}
@@ -1444,7 +1522,7 @@ async function renderExPicker() {
         <div class="ep-often-head">${ranked.length ? 'Often picked instead' : 'Same muscle group'}</div>
         ${picks.map(([name]) => `
           <div class="ep-item ep-often" data-name="${esc(name)}" data-cat="${esc(lookup[name] || cat)}">
-            <span class="ep-cat-pill" style="background:${CATEGORY_COLORS[lookup[name] || cat]||'#888'}">${esc(lookup[name] || cat)}</span>
+            <span class="ep-cat-pill" style="background:${CATEGORY_COLORS[lookup[name] || cat]||'#8e8e9a'}">${esc(lookup[name] || cat)}</span>
             <span class="ep-ex-name">${esc(name)}</span>
           </div>`).join('')}
         <div class="ep-often-sep"></div>`;
@@ -1454,7 +1532,7 @@ async function renderExPicker() {
   const listEl = document.getElementById('epList');
   listEl.innerHTML = oftenHTML + filtered.map(e => `
     <div class="ep-item" data-name="${esc(e.name)}" data-cat="${esc(e.category)}">
-      <span class="ep-cat-pill" style="background:${CATEGORY_COLORS[e.category]||'#888'}">${esc(e.category)}</span>
+      <span class="ep-cat-pill" style="background:${CATEGORY_COLORS[e.category]||'#8e8e9a'}">${esc(e.category)}</span>
       <span class="ep-ex-name">${esc(e.name)}</span>
       ${e.custom ? '<span style="font-size:0.65rem;color:var(--text-muted)">Custom</span>' : ''}
     </div>
@@ -1985,12 +2063,24 @@ function openDayChooser(dateStr, list) {
 
 // ── History render ────────────────────────────────────────────────────────────
 async function renderHistory() {
-  const sessions = await loadSessions();
+  let sessions = await loadSessions();
   const el = document.getElementById('historyList');
   document.getElementById('buildRoutinesBtn').style.display = sessions.length ? '' : 'none';
   if (!sessions.length) {
     el.innerHTML = `<div class="empty-state">No history yet.<br>Import your Hevy CSV to load past workouts.</div>`;
     return;
+  }
+
+  // Search filter — matches workout title or any exercise name.
+  const q = (document.getElementById('histSearch')?.value || '').trim().toLowerCase();
+  if (q) {
+    sessions = sessions.filter(s =>
+      (s.title || '').toLowerCase().includes(q) ||
+      (s.exercises || []).some(e => (e.name || '').toLowerCase().includes(q)));
+    if (!sessions.length) {
+      el.innerHTML = `<div class="empty-state">Nothing matches “${esc(q)}”.</div>`;
+      return;
+    }
   }
 
   const groups = {};
@@ -2070,7 +2160,7 @@ function renderHistoryDetailBody() {
     </div>
     ${pbCount ? `<div class="hd-pb-list">${s.pbs.map(p => `<div><span style="color:var(--amber);display:inline-flex;vertical-align:-0.2em;margin-right:4px">${icon('trophy', { size: 14 })}</span>${esc(p.exercise)} — ${esc(p.label)}</div>`).join('')}</div>` : ''}
     ${(s.exercises||[]).map((ex, ei) => `
-      <div style="background:var(--surface);border-radius:12px;padding:14px;margin-bottom:10px;border-left:4px solid ${CATEGORY_COLORS[ex.category]||'#4fc3f7'}">
+      <div style="background:var(--surface);border-radius:12px;padding:14px;margin-bottom:10px;border-left:4px solid ${CATEGORY_COLORS[ex.category]||'#38bdf8'}">
         <div style="font-size:0.95rem;font-weight:700;margin-bottom:10px">${esc(ex.name)}</div>
         ${ex.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);margin:-6px 0 8px;display:flex;gap:5px;align-items:flex-start">${icon('notebook-pen', { size: 13 })} <span>${esc(ex.notes)}</span></div>` : ''}
         ${hdEditMode
@@ -2081,7 +2171,7 @@ function renderHistoryDetailBody() {
             </div>`).join('')
           : (ex.sets||[]).filter(st => st.done || st.weight || st.reps || st.duration || st.distance).map((st,i) => `
             <div class="hd-set-row">
-              <span class="hd-set-num">${i+1}${st.type === 'dropset' ? '<span style="color:#ce93d8"> D</span>' : st.type === 'warmup' ? '<span style="color:#fbbf24"> W</span>' : ''}</span>
+              <span class="hd-set-num">${i+1}${st.type === 'dropset' ? '<span style="color:#a78bfa"> D</span>' : st.type === 'warmup' ? '<span style="color:#fbbf24"> W</span>' : ''}</span>
               <span class="hd-set-val">${hdSetVal(ex, st)}</span>
               ${st.rpe ? `<span style="color:var(--text-muted);margin-left:auto;font-size:0.75rem">RPE ${st.rpe}</span>` : ''}
             </div>`).join('')}
@@ -2108,7 +2198,7 @@ function renderHistoryDetailBody() {
     const editBtn = document.createElement('button');
     editBtn.className = 'header-btn';
     editBtn.innerHTML = `${icon('pencil', { size: 14 })} Edit sets`;
-    editBtn.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(79,195,247,0.4);color:var(--blue);font-size:0.9rem;font-weight:700;cursor:pointer;';
+    editBtn.style.cssText = 'display:block;width:100%;margin-bottom:8px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid rgba(56,189,248,0.4);color:var(--blue);font-size:0.9rem;font-weight:700;cursor:pointer;';
     editBtn.onclick = () => { hdEditMode = true; renderHistoryDetailBody(); };
     body.appendChild(editBtn);
 
@@ -2292,7 +2382,7 @@ async function renderLibrary() {
     <div class="section-heading" style="margin-top:12px">${cat}</div>
     ${exs.map(e => `
       <div class="lib-item" data-cue="${esc(e.name)}">
-        <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[cat]||'#888'}"></span>
+        <span class="ex-cat-dot" style="background:${CATEGORY_COLORS[cat]||'#8e8e9a'}"></span>
         <span class="lib-name">${esc(e.name)}</span>
         ${resolveCues(e.name) ? `<span class="lib-cue-hint">${icon('info', { size: 12 })} form</span>` : ''}
         ${e.custom ? '<span class="lib-custom-badge">Custom</span>' : ''}
@@ -2322,6 +2412,7 @@ document.getElementById('cuesModal').addEventListener('click', e => {
   if (e.target === document.getElementById('cuesModal')) document.getElementById('cuesModal').classList.remove('open');
 });
 document.getElementById('libSearch').oninput = renderLibrary;
+document.getElementById('histSearch').oninput = renderHistory;
 
 // ── Clear history ─────────────────────────────────────────────────────────────
 document.getElementById('clearHistoryBtn').onclick = async () => {

@@ -205,7 +205,7 @@ export const EXERCISES = [
 export const CATEGORIES = [...new Set(EXERCISES.map(e => e.category))];
 
 export const CATEGORY_COLORS = {
-  Chest: '#e94560', Back: '#4fc3f7', Shoulders: '#fbbf24',
+  Chest: '#f43f5e', Back: '#38bdf8', Shoulders: '#fbbf24',
   Biceps: '#34d399', Triceps: '#a78bfa', Quads: '#f97316',
   Hamstrings: '#f472b6', Glutes: '#e879f9', Calves: '#2dd4bf',
   Core: '#facc15', Cardio: '#60a5fa',

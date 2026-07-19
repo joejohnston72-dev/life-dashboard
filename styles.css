@@ -1,15 +1,18 @@
 /* Design tokens — update to match calorieAI if they differ */
 :root {
-  --bg:        #0f0f1a;
-  --surface:   #1a1a2e;
-  --surface2:  #16213e;
-  --accent:    #e94560;
+  --bg:        #0b0b10;
+  --surface:   #15151c;
+  --surface2:  #1e1e26;
+  --accent:    #f43f5e;
   --accent2:   #0f3460;
-  --text:      #eaeaea;
-  --text-muted:#888;
+  --text:      #f2f2f7;
+  --text-muted:#8e8e9a;
   --radius:    16px;
   --gap:       16px;
   --tile-size: clamp(140px, 44vw, 180px);
+  /* Hairline border used on every raised surface — gives cards definition on
+     the near-black bg without lightening the fill. */
+  --border:    rgba(255,255,255,0.07);
 
   /* Typography — Google Sans with a single, app-wide weight hierarchy.
      Only these three weights are used anywhere; everything maps onto them. */
@@ -111,6 +114,7 @@ button .lc, a .lc { pointer-events: none; }
   width: var(--tile-size);
   height: var(--tile-size);
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   text-decoration: none;
   color: var(--text);
@@ -130,7 +134,7 @@ button .lc, a .lc { pointer-events: none; }
 }
 .tile__icon .lc { width: 2.4rem; height: 2.4rem; }
 .tile--calories .tile__icon { color: var(--accent); }
-.tile--workout  .tile__icon { color: #4fc3f7; }
+.tile--workout  .tile__icon { color: #38bdf8; }
 
 .tile__label {
   font-size: 0.95rem;
@@ -153,4 +157,4 @@ button .lc, a .lc { pointer-events: none; }
 
 /* Per-module accent borders */
 .tile--calories  { border-top: 3px solid var(--accent); }
-.tile--workout   { border-top: 3px solid #4fc3f7; }
+.tile--workout   { border-top: 3px solid #38bdf8; }
