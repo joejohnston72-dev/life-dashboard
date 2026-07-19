@@ -10,7 +10,7 @@ wasn't asked for.)
 - **Deploy:** `git push` to `main` → GitHub Pages. `gh` at `~/bin/gh`. `.nojekyll` present.
   Pages builds are sometimes **stuck in "building"** for hours — retrigger with
   `gh api -X POST repos/joejohnston72-dev/life-dashboard/pages/builds` and poll
-  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v36**.
+  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v37**.
 - **Stack:** vanilla JS ES modules, **no build step**. IndexedDB local-first (`shared/db.js`) + Supabase sync + auth.
 - **Auth:** Supabase email **OTP code** (not magic link). Session faked in preview via `localStorage['sb-xjcnkivlkfzdycbyxxlx-auth-token']`.
 - **Service worker:** network-first + `cache:'no-cache'`; auto-updates (polls every 60s, reloads on controllerchange). If updates won't land: delete PWA + re-add.
