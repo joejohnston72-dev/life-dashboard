@@ -292,6 +292,7 @@ function fitActiveWorkout() {
   });
 }
 function unfitActiveWorkout() {
+  cancelAnimationFrame(fitRaf);
   const aw = document.getElementById('activeWorkout');
   aw.style.paddingBottom = '';
   lastKb = -1;
@@ -718,21 +719,74 @@ function isLastSupersetMember(ei) {
   const next = activeSession.exercises[+ei + 1];
   return !next || next.supersetId !== ex.supersetId;
 }
-function toggleSuperset(ei) {
-  const ex = activeSession.exercises[ei];
-  if (!ex) return;
-  if (ex.supersetId) {
-    const gid = ex.supersetId;
-    delete ex.supersetId;
-    // A group of one is meaningless — dissolve it.
-    const rest = activeSession.exercises.filter(e => e.supersetId === gid);
-    if (rest.length === 1) delete rest[0].supersetId;
-  } else {
-    const next = activeSession.exercises[ei + 1];
-    if (!next) return;                       // nothing below to pair with
-    ex.supersetId = next.supersetId || ('ss' + uid());
-    next.supersetId = ex.supersetId;
-  }
+// Pick which exercises to pair (any of them, not just the adjacent one). The
+// chosen members are reordered to sit contiguously so the group stays a valid,
+// unbroken block — that's the invariant the rail + rest-gating rely on.
+function openSupersetPicker(ei) {
+  const list = activeSession.exercises;
+  const anchor = list[ei];
+  if (!anchor) return;
+  const gid = anchor.supersetId || null;
+  const selected = new Set(list.map((_, i) => i).filter(i => i !== ei && gid && list[i].supersetId === gid));
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop open';
+  const rows = list.map((e, i) => i === ei ? '' : `
+    <button class="sheet-btn ss-pick" data-i="${i}" style="display:flex;align-items:center;gap:12px;text-align:left">
+      <span class="ss-tick" style="width:20px;color:var(--purple);display:inline-flex">${selected.has(i) ? icon('check', { size: 16 }) : ''}</span>
+      <span style="flex:1">${esc(e.name)}</span>
+    </button>`).join('');
+  back.innerHTML = `<div class="modal">
+    <p class="modal-title">Superset ${esc(anchor.name)} with…</p>
+    <p style="font-size:0.78rem;color:var(--text-muted);margin:-8px 0 12px;line-height:1.5">Pick the exercises to pair — they'll be grouped together and the rest timer only runs after the last one.</p>
+    <div style="max-height:44vh;overflow-y:auto;margin-bottom:6px">${rows || '<div class="empty-state" style="padding:16px 0">Add another exercise first.</div>'}</div>
+    <div class="modal-btns">
+      <button class="btn btn-g" data-act="cancel">Cancel</button>
+      ${gid ? '<button class="btn btn-d" data-act="ungroup">Ungroup</button>' : ''}
+      <button class="btn btn-p" data-act="done">Done</button>
+    </div>
+  </div>`;
+  document.body.appendChild(back);
+  back.addEventListener('click', e => {
+    const pick = e.target.closest('.ss-pick');
+    if (pick) {
+      const i = +pick.dataset.i;
+      selected.has(i) ? selected.delete(i) : selected.add(i);
+      pick.querySelector('.ss-tick').innerHTML = selected.has(i) ? icon('check', { size: 16 }) : '';
+      return;
+    }
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (e.target === back || act === 'cancel') { back.remove(); return; }
+    if (act === 'ungroup') { back.remove(); ungroupSuperset(ei); return; }
+    if (act === 'done')    { back.remove(); applySuperset(ei, [...selected]); return; }
+  });
+}
+
+function ungroupSuperset(ei) {
+  const gid = activeSession.exercises[ei]?.supersetId;
+  if (gid) for (const e of activeSession.exercises) if (e.supersetId === gid) delete e.supersetId;
+  renderActiveSession();
+  saveSoon();
+}
+
+function applySuperset(anchorEi, selectedIdxs) {
+  const list = activeSession.exercises;
+  const anchor = list[anchorEi];
+  if (!anchor) return;
+  const oldGid = anchor.supersetId || null;
+  const members = new Set([anchorEi, ...selectedIdxs.filter(i => i >= 0 && i < list.length && i !== anchorEi)]);
+  if (members.size < 2) { ungroupSuperset(anchorEi); return; }   // deselected all → ungroup
+  // Drop any previous group member the user unchecked this time.
+  if (oldGid) list.forEach((e, i) => { if (e.supersetId === oldGid && !members.has(i)) delete e.supersetId; });
+  const gid = oldGid || ('ss' + uid());
+  const ordered = [...members].sort((a, b) => a - b);
+  const memberExs = ordered.map(i => list[i]);
+  memberExs.forEach(e => e.supersetId = gid);
+  // Reinsert the members as one contiguous block at the anchor's relative slot.
+  let insertAt = 0;
+  for (let i = 0; i < anchorEi; i++) if (!members.has(i)) insertAt++;
+  const rest = list.filter((_, i) => !members.has(i));
+  rest.splice(insertAt, 0, ...memberExs);
+  activeSession.exercises = rest;
   renderActiveSession();
   saveSoon();
 }
@@ -743,17 +797,13 @@ function openExMenuSheet(ei) {
   menuEi = ei;
   const ex = activeSession.exercises[ei];
   document.getElementById('exMenuTitle').textContent = ex.name;
-  // Configure the superset row for this exercise's state.
+  // Configure the superset row — needs at least one other exercise to pair with.
   const ssBtn = document.getElementById('exMenuSuperset');
-  const hasNext = !!activeSession.exercises[ei + 1];
-  if (ex.supersetId) {
+  if (activeSession.exercises.length > 1) {
     ssBtn.style.display = '';
-    ssBtn.innerHTML = `${icon('repeat', { size: 17 })} Remove from superset`;
-  } else if (hasNext) {
-    ssBtn.style.display = '';
-    ssBtn.innerHTML = `${icon('repeat', { size: 17 })} Superset with next`;
+    ssBtn.innerHTML = `${icon('repeat', { size: 17 })} ${ex.supersetId ? 'Edit superset…' : 'Superset…'}`;
   } else {
-    ssBtn.style.display = 'none';            // last exercise, not grouped — nothing to pair
+    ssBtn.style.display = 'none';
   }
   document.getElementById('exMenuSheet').classList.add('open');
 }
@@ -766,7 +816,7 @@ document.getElementById('exMenuReplace').onclick = () => {
 };
 document.getElementById('exMenuSuperset').onclick = () => {
   exMenuSheet.classList.remove('open');
-  toggleSuperset(menuEi);
+  openSupersetPicker(menuEi);
 };
 document.getElementById('exMenuReorder').onclick = () => {
   exMenuSheet.classList.remove('open');
@@ -2459,7 +2509,72 @@ function renderCoachMessage(m) {
     wrap.appendChild(b);
   }
   if (m.routine) wrap.appendChild(renderRoutineCard(m.routine));
+  if (m.action)  wrap.appendChild(renderActionCard(m.action));
   return wrap;
+}
+
+// Confirmation card for an action the coach performed (add exercises / log workouts).
+function renderActionCard(action) {
+  const card = document.createElement('div');
+  card.className = 'coach-action';
+  card.innerHTML = `
+    <div class="coach-action-head">${icon('circle-check', { size: 16 })} ${esc(action.title)}</div>
+    ${action.items?.length ? `<ul class="coach-action-list">${action.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}`;
+  return card;
+}
+
+// ── Coach actions (executed client-side; the model just requests them) ────────
+async function coachAddExercises(input) {
+  const reqs = (Array.isArray(input?.exercises) ? input.exercises : [])
+    .map(e => ({
+      name: String(e?.name || '').trim(),
+      category: CATEGORIES.includes(e?.category) ? e.category : guessCategory(String(e?.name || '')),
+    }))
+    .filter(e => e.name);
+  const before = ((await db.get(STORE, 'exercises-custom')) || []).length;
+  await ensureExercisesInRepo(reqs);
+  const added = ((await db.get(STORE, 'exercises-custom')) || []).length - before;
+  if (activeTab === 'Library') renderLibrary();
+  return {
+    text: added ? `Done — added ${added} exercise${added === 1 ? '' : 's'} to your library.`
+                : `Those are already in your library.`,
+    summary: { title: `Added ${added} exercise${added === 1 ? '' : 's'} to your library`,
+               items: reqs.map(e => `${e.name} · ${e.category}`) },
+  };
+}
+
+async function coachLogWorkouts(input) {
+  const wos = Array.isArray(input?.workouts) ? input.workouts : [];
+  const saved = [];
+  for (const w of wos) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(w?.date || '') ? w.date : new Date().toISOString().slice(0, 10);
+    const dur  = Math.max(0, Math.round((parseFloat(w?.durationMin) || 0) * 60));
+    const exercises = (Array.isArray(w?.exercises) ? w.exercises : []).map(e => {
+      const name = String(e?.name || '').trim() || 'Exercise';
+      const category = CATEGORIES.includes(e?.category) ? e.category : guessCategory(name);
+      const sets = (Array.isArray(e?.sets) ? e.sets : []).map(s => ({
+        id: uid(), type: ['warmup', 'dropset'].includes(s?.type) ? s.type : 'normal',
+        weight: Math.max(0, Number(s?.weight) || 0), reps: Math.max(0, parseInt(s?.reps) || 0), done: true,
+      }));
+      return { id: uid(), name, category, logType: exLogType(name, category), notes: '', restTime: 60,
+               sets: sets.length ? sets : [{ id: uid(), type: 'normal', weight: 0, reps: 0, done: true }] };
+    });
+    if (!exercises.length) continue;
+    const session = {
+      id: uid(), title: String(w?.title || 'Workout').slice(0, 60), date,
+      startTime: `${date}T12:00:00`, endTime: `${date}T12:00:00`, duration: dur,
+      exercises, pbs: [],
+    };
+    await db.set(STORE, 'session-' + session.id, session);
+    await ensureExercisesInRepo(exercises);
+    saved.push(`${session.title} · ${fmtDate(date)}`);
+  }
+  renderDashboard();
+  return {
+    text: saved.length ? `Done — logged ${saved.length} workout${saved.length === 1 ? '' : 's'} to your history.`
+                       : `I couldn't log those — no exercises were provided.`,
+    summary: { title: `Logged ${saved.length} workout${saved.length === 1 ? '' : 's'}`, items: saved },
+  };
 }
 
 function renderRoutineCard(routine) {
@@ -2534,15 +2649,24 @@ async function sendCoach(text, forceTool = false) {
     if (result.error) { pushCoachError(result.error); coachBusy = false; return; }
 
     const botMsg = { role: 'assistant', text: result.text || '' };
-    if (result.routine) {
+    const tool = result.tool;
+    if (tool?.name === 'draft_routine') {
       try {
-        botMsg.routine = await validateRoutine(result.routine, { getAllExercises, guessCategory });
+        botMsg.routine = await validateRoutine(tool.input, { getAllExercises, guessCategory });
         if (!botMsg.text) botMsg.text = `Here's a routine — “${botMsg.routine.name}”:`;
       } catch (_) {
         if (!botMsg.text) botMsg.text = "I drafted something but couldn't structure it — try rephrasing.";
       }
+    } else if (tool?.name === 'add_library_exercises') {
+      const res = await coachAddExercises(tool.input);
+      botMsg.action = res.summary;
+      if (!botMsg.text) botMsg.text = res.text;
+    } else if (tool?.name === 'log_workouts') {
+      const res = await coachLogWorkouts(tool.input);
+      botMsg.action = res.summary;
+      if (!botMsg.text) botMsg.text = res.text;
     }
-    if (!botMsg.text && !botMsg.routine) botMsg.text = '(no response)';
+    if (!botMsg.text && !botMsg.routine && !botMsg.action) botMsg.text = '(no response)';
     coachThread.push(botMsg);
     thread.appendChild(renderCoachMessage(botMsg));
     persistCoachThread();

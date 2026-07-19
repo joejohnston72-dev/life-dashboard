@@ -117,18 +117,13 @@
 
     .empty-state { text-align:center;color:var(--text-muted);padding:30px 0;font-size:0.88rem;line-height:1.7; }
 
-    /* Lock the page behind the active-workout overlay so the tab bar / other
-       tabs can't scroll into view when the keyboard opens. `overflow:hidden`
-       alone isn't enough on iOS — when an input is focused Safari scrolls the
-       root document to keep the caret above the keyboard, dragging the
-       dashboard menu into the gap. Pinning the body with position:fixed removes
-       that scrollable root entirely, and its solid --bg backs any stray gap. */
-    body.workout-open {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      width: 100%;
-      overflow: hidden;
-    }
+    /* Stop the page behind the active-workout overlay from scrolling. Just
+       overflow:hidden — NOT position:fixed. The overlay now always covers the
+       full screen (fitActiveWorkout only pads its bottom, never shrinks it), so
+       nothing behind can show through anyway; pinning the body with
+       position:fixed and un-pinning it on close was leaving iOS momentum-scroll
+       in a janky state (the tab bar drifted up on swipe after closing). */
+    body.workout-open { overflow: hidden; }
 
     /* ── Active workout overlay ── */
     #activeWorkout {
@@ -164,7 +159,7 @@
     .ex-block { margin-bottom:20px; }
     /* Superset grouping — a purple rail down the left connects paired exercises */
     .ex-block.ss-member {
-      border-left:3px solid var(--purple); border-radius:0 0 0 0;
+      border-left:3px solid var(--purple);
       padding-left:13px; margin-left:1px;
     }
     .ex-block.ss-member:not(.ss-last) { margin-bottom:8px; }   /* tighter within a group */
@@ -500,6 +495,15 @@
     .coach-routine-btns button { flex:1; padding:11px; border:none; border-radius:10px; font-size:0.85rem; font-weight:700; cursor:pointer; }
     .cr-start { background:var(--blue); color:#000; }
     .cr-save  { background:var(--surface2); color:var(--text); }
+    /* Coach action confirmation card (exercises added / workouts logged) */
+    .coach-action {
+      align-self:flex-start; max-width:92%;
+      background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.4);
+      border-radius:14px; padding:12px 14px;
+    }
+    .coach-action-head { display:flex; align-items:center; gap:7px; font-size:0.88rem; font-weight:700; color:var(--green); }
+    .coach-action-list { margin:8px 0 0 6px; padding:0; list-style:none; font-size:0.8rem; color:var(--text); line-height:1.7; }
+    .coach-action-list li::before { content:'· '; color:var(--text-muted); }
     .coach-chips { flex-shrink:0; display:flex; gap:7px; padding:6px var(--gap); overflow-x:auto; }
     .coach-chips::-webkit-scrollbar { display:none; }
     .coach-chip {
@@ -872,7 +876,7 @@
   <div class="modal">
     <p class="modal-title" id="exMenuTitle"></p>
     <button class="sheet-btn" id="exMenuReplace"><i data-lucide="repeat" data-size="17"></i> Replace exercise…</button>
-    <button class="sheet-btn" id="exMenuSuperset"><i data-lucide="repeat" data-size="17"></i> Superset with next</button>
+    <button class="sheet-btn" id="exMenuSuperset"><i data-lucide="repeat" data-size="17"></i> Superset…</button>
     <button class="sheet-btn" id="exMenuReorder"><i data-lucide="arrow-up-down" data-size="17"></i> Reorder exercises</button>
     <button class="sheet-btn danger" id="exMenuRemove"><i data-lucide="trash-2" data-size="17"></i> Remove from workout</button>
     <button class="sheet-btn" id="exMenuCancel" style="text-align:center;background:none;color:var(--text-muted)">Cancel</button>

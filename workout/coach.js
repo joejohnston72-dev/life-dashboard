@@ -45,6 +45,76 @@ export const DRAFT_ROUTINE_TOOL = {
   },
 };
 
+// ── Action tools: let the coach make real in-app changes ──────────────────────
+// The app executes these client-side (see app.js coachAddExercises / coachLogWorkouts)
+// and shows a confirmation card — no second API round-trip.
+export const ADD_EXERCISES_TOOL = {
+  name: 'add_library_exercises',
+  description: "Add one or more custom exercises to the user's exercise library so they're selectable in future workouts. Use when the user asks to add/create exercises in their library.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      exercises: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name:     { type: 'string', description: 'Exercise name, e.g. "Zercher Squat".' },
+            category: { type: 'string', enum: CATEGORIES },
+          },
+          required: ['name', 'category'],
+        },
+      },
+    },
+    required: ['exercises'],
+  },
+};
+export const LOG_WORKOUTS_TOOL = {
+  name: 'log_workouts',
+  description: "Log or backfill one or more completed workouts into the user's history, optionally on past dates. Use when the user asks to add, log, or backfill sessions (e.g. \"add 2 cardio sessions to last week\"). Compute real YYYY-MM-DD dates from the TODAY value in the system prompt.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      workouts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title:       { type: 'string', description: 'Workout name, e.g. "Cardio".' },
+            date:        { type: 'string', description: 'ISO date YYYY-MM-DD, computed from TODAY.' },
+            durationMin: { type: 'integer', description: 'Optional duration in minutes.' },
+            exercises: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name:     { type: 'string' },
+                  category: { type: 'string', enum: CATEGORIES },
+                  sets: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        weight: { type: 'number',  description: '0 for bodyweight/cardio.' },
+                        reps:   { type: 'integer', description: 'For Cardio, reps = minutes.' },
+                        type:   { type: 'string', enum: ['normal', 'warmup', 'dropset'] },
+                      },
+                      required: ['weight', 'reps', 'type'],
+                    },
+                  },
+                },
+                required: ['name', 'category', 'sets'],
+              },
+            },
+          },
+          required: ['title', 'date', 'exercises'],
+        },
+      },
+    },
+    required: ['workouts'],
+  },
+};
+
 // ── Name normalisation (ported from cues.js — that copy is not exported) ──────
 export function normName(s) {
   return String(s).toLowerCase()
@@ -94,13 +164,23 @@ export function buildCoachContext(sessions, templates, records, streak, allExerc
     `- ${t.name}: ${t.exercises.map(e => e.name).join(', ')}`
   ).join('\n');
 
+  const now = new Date();
+  const todayStr = `${now.toISOString().slice(0, 10)} (${now.toLocaleDateString('en-GB', { weekday: 'long' })})`;
+
   return `You are an expert strength & hypertrophy coach and training assistant living inside the user's workout app. The user is an experienced lifter in the UK — all weights are in KILOGRAMS (kg), never pounds or dollars.
+
+TODAY: ${todayStr}. Compute any relative dates ("last week", "yesterday") from this.
 
 HOW TO RESPOND
 - Answer ANY question the user asks — training, technique/form, programming, progression, recovery, nutrition-for-lifters, or how to use this app. Always give a real answer in plain text; never refuse a normal training/health question or reply with just a routine when they asked something else.
 - Be concise and practical: a clear recommendation, not an exhaustive survey.
 - Use the user's own history below to personalise (their lifts, PBs, recent sessions, streak).
-- ONLY call the draft_routine tool when the user actually wants a workout or program created, or asks "what should I train today". For everything else, reply with text and do not call the tool.
+- ONLY call draft_routine when the user actually wants a workout/program created, or asks "what should I train today". For everything else, reply with text and do not call it.
+
+ACTIONS YOU CAN TAKE (make real changes in the app)
+- add_library_exercises — add custom exercises to the user's library when they ask you to.
+- log_workouts — log/backfill completed sessions into their history, including on past dates (use TODAY to compute them).
+Call these when the user clearly asks you to add/log/backfill something. Do it, then confirm briefly in text what you did. Don't call them for hypothetical suggestions.
 
 APP CAPABILITIES (for "how do I…" questions)
 ${APP_CAPABILITIES}
@@ -227,7 +307,7 @@ export async function callCoach({ apiMessages, system, forceTool = false, getKey
     model: MODEL,
     max_tokens: forceTool ? 1600 : 2000,   // more room for detailed chat answers
     system,
-    tools: [DRAFT_ROUTINE_TOOL],
+    tools: [DRAFT_ROUTINE_TOOL, ADD_EXERCISES_TOOL, LOG_WORKOUTS_TOOL],
     tool_choice: forceTool ? { type: 'tool', name: 'draft_routine' } : { type: 'auto' },
     messages,
   };
@@ -261,5 +341,8 @@ export async function callCoach({ apiMessages, system, forceTool = false, getKey
   if (data.stop_reason === 'refusal') return { text: "I can't help with that one.", routine: null };
   const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
   const toolBlock  = (data.content || []).find(b => b.type === 'tool_use');
-  return { text: textBlocks, routine: toolBlock ? toolBlock.input : null };
+  return {
+    text: textBlocks,
+    tool: toolBlock ? { name: toolBlock.name, input: toolBlock.input } : null,
+  };
 }
