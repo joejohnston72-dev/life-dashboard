@@ -162,6 +162,18 @@
 
     /* ── Exercise block (in active workout) ── */
     .ex-block { margin-bottom:20px; }
+    /* Superset grouping — a purple rail down the left connects paired exercises */
+    .ex-block.ss-member {
+      border-left:3px solid var(--purple); border-radius:0 0 0 0;
+      padding-left:13px; margin-left:1px;
+    }
+    .ex-block.ss-member:not(.ss-last) { margin-bottom:8px; }   /* tighter within a group */
+    .ex-block.ss-first { padding-top:4px; }
+    .ss-label {
+      display:inline-flex; align-items:center; gap:5px; margin-bottom:8px;
+      font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em;
+      color:var(--purple);
+    }
     .ex-block-header {
       display:flex; align-items:center; gap:8px; margin-bottom:10px;
       -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
@@ -860,6 +872,7 @@
   <div class="modal">
     <p class="modal-title" id="exMenuTitle"></p>
     <button class="sheet-btn" id="exMenuReplace"><i data-lucide="repeat" data-size="17"></i> Replace exercise…</button>
+    <button class="sheet-btn" id="exMenuSuperset"><i data-lucide="repeat" data-size="17"></i> Superset with next</button>
     <button class="sheet-btn" id="exMenuReorder"><i data-lucide="arrow-up-down" data-size="17"></i> Reorder exercises</button>
     <button class="sheet-btn danger" id="exMenuRemove"><i data-lucide="trash-2" data-size="17"></i> Remove from workout</button>
     <button class="sheet-btn" id="exMenuCancel" style="text-align:center;background:none;color:var(--text-muted)">Cancel</button>

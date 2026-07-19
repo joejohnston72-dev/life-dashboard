@@ -219,6 +219,7 @@ async function startEmptyWorkout(prefill = null, backfill = null) {
       repRange: e.repRange || def?.repRange || null,
       prevPerf: prev ? prev.sets.slice(0,3).map(s => `${fmtKg(s.weight)}×${s.reps}`).join(', ') : null,
       prevSets: prev?.sets || null,
+      ...(e.supersetId ? { supersetId: e.supersetId } : {}),
       sets: (e.sets?.length ? e.sets : [{}]).map((tpl, si) => freshSet(tpl, prev?.sets || null, si)),
     };
   });
@@ -264,28 +265,36 @@ function openActiveWorkout() {
   fitActiveWorkout();
 }
 
-// Size the overlay to the *visible* viewport so, when the keyboard opens, the
-// footer/rest-bar sit just above it and only .aw-body scrolls — never the page
-// behind. Without this iOS lets the background (incl. the tab bar) scroll into view.
+// Keyboard handling. The overlay ALWAYS stays full-screen (inset:0) — a shrunk
+// overlay was the whole bug: any strip it didn't cover let the dashboard behind
+// leak through under the keyboard. Instead we only pad the overlay's bottom by
+// the keyboard's height, which lifts the footer/rest-bar above the keyboard while
+// the overlay's own solid background fills that padded strip. Because the overlay
+// never gets smaller than the screen, nothing behind it can ever show.
+//
+// It's also idempotent + rAF-batched: visualViewport fires 'scroll' on every
+// momentum frame, and re-writing layout each time was a big source of the
+// jitter. We recompute at most once per frame and skip the write when unchanged.
+let lastKb = -1, fitRaf = 0;
 function fitActiveWorkout() {
-  const aw = document.getElementById('activeWorkout');
-  if (!aw.classList.contains('visible')) return;
-  const vv = window.visualViewport;
-  if (!vv) return;
-  const keyboardOpen = (window.innerHeight - vv.height) > 100 || vv.offsetTop > 0;
-  if (keyboardOpen) {
-    aw.style.transition = 'none';                 // track the keyboard instantly, no lag
-    aw.style.height = vv.height + 'px';
-    aw.style.bottom = 'auto';
-    aw.style.transform = `translateY(${vv.offsetTop}px)`;
-  } else {
-    // no keyboard — clear overrides so the CSS entrance animation / layout applies
-    aw.style.transition = ''; aw.style.height = ''; aw.style.bottom = ''; aw.style.transform = '';
-  }
+  cancelAnimationFrame(fitRaf);
+  fitRaf = requestAnimationFrame(() => {
+    const aw = document.getElementById('activeWorkout');
+    if (!aw.classList.contains('visible')) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    // Height of the keyboard = layout viewport minus the still-visible strip.
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const applied = kb > 80 ? kb : 0;   // ignore tiny insets / the input accessory bar
+    if (applied === lastKb) return;     // no change → no reflow, no jitter
+    lastKb = applied;
+    aw.style.paddingBottom = applied ? applied + 'px' : '';
+  });
 }
 function unfitActiveWorkout() {
   const aw = document.getElementById('activeWorkout');
-  aw.style.transition = ''; aw.style.height = ''; aw.style.bottom = ''; aw.style.transform = '';
+  aw.style.paddingBottom = '';
+  lastKb = -1;
   document.body.classList.remove('workout-open');
 }
 if (window.visualViewport) {
@@ -384,6 +393,15 @@ function buildExerciseBlock(ex, ei) {
   const block = document.createElement('div');
   block.className = 'ex-block';
   block.dataset.ei = ei;
+  // Superset grouping — contiguous exercises sharing a supersetId form a group.
+  const prevEx = activeSession.exercises[ei - 1];
+  const nextEx = activeSession.exercises[ei + 1];
+  const inSS = !!ex.supersetId;
+  const firstOfGroup = inSS && (!prevEx || prevEx.supersetId !== ex.supersetId);
+  const lastOfGroup  = inSS && (!nextEx || nextEx.supersetId !== ex.supersetId);
+  if (inSS) block.classList.add('ss-member');
+  if (firstOfGroup) block.classList.add('ss-first');
+  if (lastOfGroup)  block.classList.add('ss-last');
   const color = CATEGORY_COLORS[ex.category] || '#888';
   const lt = resolveLogType(ex);
   const cfg = LOGTYPES[lt];
@@ -392,6 +410,7 @@ function buildExerciseBlock(ex, ei) {
   const range = resolveRepRange({ name: ex.name, category: ex.category, logType: lt, repRange: ex.repRange });
 
   block.innerHTML = `
+    ${firstOfGroup ? `<div class="ss-label">${icon('repeat', { size: 12 })} Superset</div>` : ''}
     <div class="ex-block-header" data-ei="${ei}">
       <div class="ex-cat-dot" style="background:${color}"></div>
       <div class="ex-name">${esc(ex.name)}</div>
@@ -574,7 +593,9 @@ function toggleSetDone(ei, setId, rowEl) {
     }
 
     unlockAudio();
-    if (!routineMode) startRest(ex.restTime ?? 60, ex.name);
+    // In a superset you go straight to the paired exercise — only rest after the
+    // last member of the group (or a normal, ungrouped exercise).
+    if (!routineMode && isLastSupersetMember(ei)) startRest(ex.restTime ?? 60, ex.name);
   }
 
   rowEl.classList.toggle('done', set.done);
@@ -688,12 +709,52 @@ function checkWeightSanity(ex, set, rowEl) {
   rowEl.after(tr);
 }
 
+// ── Supersets ─────────────────────────────────────────────────────────────────
+// Contiguous exercises that share a supersetId are performed back-to-back; rest
+// only fires after the last member (see toggleSetDone).
+function isLastSupersetMember(ei) {
+  const ex = activeSession?.exercises[+ei];
+  if (!ex?.supersetId) return true;
+  const next = activeSession.exercises[+ei + 1];
+  return !next || next.supersetId !== ex.supersetId;
+}
+function toggleSuperset(ei) {
+  const ex = activeSession.exercises[ei];
+  if (!ex) return;
+  if (ex.supersetId) {
+    const gid = ex.supersetId;
+    delete ex.supersetId;
+    // A group of one is meaningless — dissolve it.
+    const rest = activeSession.exercises.filter(e => e.supersetId === gid);
+    if (rest.length === 1) delete rest[0].supersetId;
+  } else {
+    const next = activeSession.exercises[ei + 1];
+    if (!next) return;                       // nothing below to pair with
+    ex.supersetId = next.supersetId || ('ss' + uid());
+    next.supersetId = ex.supersetId;
+  }
+  renderActiveSession();
+  saveSoon();
+}
+
 // ── Exercise "…" action sheet ─────────────────────────────────────────────────
 let menuEi = null;
 function openExMenuSheet(ei) {
   menuEi = ei;
   const ex = activeSession.exercises[ei];
   document.getElementById('exMenuTitle').textContent = ex.name;
+  // Configure the superset row for this exercise's state.
+  const ssBtn = document.getElementById('exMenuSuperset');
+  const hasNext = !!activeSession.exercises[ei + 1];
+  if (ex.supersetId) {
+    ssBtn.style.display = '';
+    ssBtn.innerHTML = `${icon('repeat', { size: 17 })} Remove from superset`;
+  } else if (hasNext) {
+    ssBtn.style.display = '';
+    ssBtn.innerHTML = `${icon('repeat', { size: 17 })} Superset with next`;
+  } else {
+    ssBtn.style.display = 'none';            // last exercise, not grouped — nothing to pair
+  }
   document.getElementById('exMenuSheet').classList.add('open');
 }
 const exMenuSheet = document.getElementById('exMenuSheet');
@@ -702,6 +763,10 @@ document.getElementById('exMenuCancel').onclick  = () => exMenuSheet.classList.r
 document.getElementById('exMenuReplace').onclick = () => {
   exMenuSheet.classList.remove('open');
   openExPicker({ replaceEi: menuEi });
+};
+document.getElementById('exMenuSuperset').onclick = () => {
+  exMenuSheet.classList.remove('open');
+  toggleSuperset(menuEi);
 };
 document.getElementById('exMenuReorder').onclick = () => {
   exMenuSheet.classList.remove('open');
@@ -1509,6 +1574,7 @@ document.getElementById('templateNameSave').onclick = async () => {
     id: uid(), name,
     exercises: activeSession.exercises.map(e => ({
       name: e.name, category: e.category, restTime: e.restTime ?? 60, logType: resolveLogType(e),
+      ...(e.supersetId ? { supersetId: e.supersetId } : {}),
       sets: e.sets.map(s => ({ weight: s.weight || s.tW || 0, reps: s.reps || s.tR || 0, distance: s.distance || 0, duration: s.duration || 0, type: s.type })),
     })),
   });
@@ -2047,6 +2113,7 @@ async function saveTemplate(name, exercises) {
     id: uid(), name,
     exercises: exercises.map(e => ({
       name: e.name, category: e.category, restTime: e.restTime ?? 60, logType: resolveLogType(e),
+      ...(e.supersetId ? { supersetId: e.supersetId } : {}),
       sets: e.sets.filter(s => s.done||s.weight||s.reps||s.duration||s.distance).map(s => ({ weight: s.weight, reps: s.reps, distance: s.distance || 0, duration: s.duration || 0, type: s.type })),
     })),
   });
