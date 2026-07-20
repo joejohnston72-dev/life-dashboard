@@ -1,5 +1,5 @@
 import { supabase }                     from '../shared/supabase.js';
-import db                               from '../shared/db.js';
+import db, { initialSync }              from '../shared/db.js';
 import { EXERCISES, CATEGORIES, CATEGORY_COLORS } from './exercises.js';
 import { resolveCues } from './cues.js';
 import { ROUTINE_LIBRARY } from './routineLibrary.js';
@@ -2850,6 +2850,17 @@ document.getElementById('coachKeySave').onclick = async () => {
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+// Wait for the cloud restore BEFORE the first render / seeding, so a reinstalled
+// app (empty IndexedDB) shows its real history instead of looking wiped — and so
+// seedMyRoutinesOnce sees the restored `my-routines-seeded` flag and doesn't
+// re-seed. Cap the wait so we never hang offline; if the pull lands after the
+// cap, re-render then. A brief "restoring…" note reassures during the wait.
+if (document.getElementById('recentList')) {
+  document.getElementById('recentList').innerHTML =
+    '<div class="empty-state" style="padding:24px 0">Restoring your data…</div>';
+}
+try { await Promise.race([initialSync, new Promise(r => setTimeout(r, 12000))]); } catch (_) {}
+
 await seedMyRoutinesOnce();
 await fixIncompletePushDayOnce();
 await checkForAbandonedSession();
@@ -2857,3 +2868,6 @@ refreshIcons();   // paint the static tab-bar / header / chip icon placeholders
 renderDashboard();
 renderHistory();
 backfillCustomRepRanges(); // background — fills in AI rep ranges for any custom exercise missing one
+
+// If the cloud pull finished AFTER the cap (slow network), refresh once it lands.
+initialSync.then(n => { if (n) { renderDashboard(); renderHistory(); renderStats(); } }).catch(() => {});

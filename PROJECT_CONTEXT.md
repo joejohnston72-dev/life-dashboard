@@ -10,8 +10,9 @@ wasn't asked for.)
 - **Deploy:** `git push` to `main` → GitHub Pages. `gh` at `~/bin/gh`. `.nojekyll` present.
   Pages builds are sometimes **stuck in "building"** for hours — retrigger with
   `gh api -X POST repos/joejohnston72-dev/life-dashboard/pages/builds` and poll
-  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v38**.
+  `curl -s .../sw.js | head -1` until the CACHE version matches. **Bump `sw.js` CACHE every change.** Currently **v39**.
 - **Stack:** vanilla JS ES modules, **no build step**. IndexedDB local-first (`shared/db.js`) + Supabase sync + auth.
+- **Data restore (v39, important):** iOS **wipes a PWA's IndexedDB when its home-screen icon is removed** — a reinstall starts empty. The cloud copy in Supabase `entries` is the backstop. `db.js` exports **`initialSync`** (a promise that resolves to the row count restored); `app.js` init **awaits it (12 s cap) before the first render/seed**, then re-renders if it lands late — otherwise the UI paints the empty store and looks like total data loss (this is exactly what scared the user). Never had real loss: every `db.set` mirrors to Supabase and nothing deletes `session-*` there except the explicit "Clear all history" button. Do NOT weaken this (e.g. render before the pull) again.
 - **Auth:** Supabase email **OTP code** (not magic link). Session faked in preview via `localStorage['sb-xjcnkivlkfzdycbyxxlx-auth-token']`.
 - **Service worker:** network-first + `cache:'no-cache'`; auto-updates (polls every 60s, reloads on controllerchange). If updates won't land: delete PWA + re-add.
 

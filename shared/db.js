@@ -78,20 +78,26 @@ async function remoteDel(store, key) {
 
 async function syncFromSupabase() {
   const user_id = await getUserId();
-  if (!user_id) return;
+  if (!user_id) return 0;
   const { data, error } = await supabase.from('entries')
     .select('store, key, value')
     .eq('user_id', user_id);
-  if (error || !data) return;
+  if (error || !data) return 0;
   for (const row of data) {
     await idbSet(row.store, row.key, row.value);
   }
+  return data.length;
 }
 
-// Auto-sync on every page load when a session exists
-supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session) syncFromSupabase();
-});
+// Initial cloud pull, kicked off at import time but exposed as a PROMISE so the
+// app can wait for it before its first render. Critical for reinstalls / cleared
+// browsers: iOS wipes a PWA's IndexedDB when its home-screen icon is removed, so
+// a fresh launch starts empty — without awaiting this, the UI paints empty and
+// looks like all history was lost even though the cloud copy is intact.
+// Resolves to the number of rows restored (0 if no session / nothing to pull).
+export const initialSync = supabase.auth.getSession()
+  .then(({ data: { session } }) => (session ? syncFromSupabase() : 0))
+  .catch(() => 0);
 
 // ── Public API (same interface as before) ─────────────────────────────────────
 const db = {
