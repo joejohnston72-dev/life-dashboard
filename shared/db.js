@@ -102,7 +102,15 @@ async function syncFromSupabase() {
       .order('key',   { ascending: true })
       .range(from, from + PAGE - 1);
     if (error || !data || !data.length) break;
-    for (const row of data) await idbSet(row.store, row.key, row.value);
+    for (const row of data) {
+      // Skip rows for stores this DB doesn't have (e.g. leftover 'finance' rows
+      // from a removed module). Writing to a non-existent object store throws
+      // "object store not found" and would abort the WHOLE restore — that's what
+      // was wiping out the workout rows. Also guard each write so one bad row
+      // can never take down the batch.
+      if (!STORES.includes(row.store)) continue;
+      try { await idbSet(row.store, row.key, row.value); } catch (_) {}
+    }
     total += data.length;
     if (data.length < PAGE) break;
     from += PAGE;
