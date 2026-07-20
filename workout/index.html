@@ -734,13 +734,18 @@
   <div class="section" id="secStats">
     <div id="statsBody"></div>
 
-    <div class="section-heading" style="margin-top:22px">History</div>
-    <button class="import-btn" id="importBtn"><i data-lucide="download" data-size="16"></i> Import from Hevy (CSV)</button>
-    <button class="import-btn" id="clearHistoryBtn" style="border-color:rgba(244,63,94,0.4);color:#f43f5e"><i data-lucide="trash-2" data-size="16"></i> Clear all workout history</button>
-    <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none"><i data-lucide="zap" data-size="16"></i> Build Routines from History</button>
-    <input class="form-input" id="histSearch" placeholder="Search history — title or exercise…" style="margin-bottom:10px">
+    <div class="section-heading" style="margin-top:22px">Backup &amp; restore</div>
+    <button class="import-btn" id="restoreCloudBtn" style="border-color:rgba(56,189,248,0.4);color:var(--blue)"><i data-lucide="refresh-cw" data-size="16"></i> Restore from cloud</button>
+    <button class="import-btn" id="backupCloudBtn"><i data-lucide="upload" data-size="16"></i> Back up to cloud now</button>
+    <button class="import-btn" id="exportBtn"><i data-lucide="download" data-size="16"></i> Export backup file</button>
+    <button class="import-btn" id="importBtn"><i data-lucide="list-plus" data-size="16"></i> Import workouts (CSV / JSON)</button>
     <div class="import-progress" id="importProgress"></div>
-    <input type="file" id="csvInput" accept=".csv" style="display:none">
+    <input type="file" id="csvInput" accept=".csv,.json,.txt" style="display:none">
+
+    <div class="section-heading" style="margin-top:18px">History</div>
+    <input class="form-input" id="histSearch" placeholder="Search history — title or exercise…" style="margin-bottom:10px">
+    <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none"><i data-lucide="zap" data-size="16"></i> Build Routines from History</button>
+    <button class="import-btn" id="clearHistoryBtn" style="border-color:rgba(244,63,94,0.4);color:#f43f5e"><i data-lucide="trash-2" data-size="16"></i> Clear all workout history</button>
     <!-- Routine builder panel -->
     <div id="routineBuilder" style="display:none;background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:14px">
       <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:12px">Save as Routine — tap to add</div>
@@ -918,7 +923,7 @@
       <input class="form-input" id="streakTargetInput" type="number" min="1" max="7" inputmode="numeric">
     </div>
     <div class="form-group">
-      <label class="form-label">Starting streak (carry over your Hevy streak, in weeks)</label>
+      <label class="form-label">Starting streak (carry over a previous streak, in weeks)</label>
       <input class="form-input" id="streakSeedInput" type="number" min="0" inputmode="numeric" placeholder="e.g. 48">
     </div>
     <div class="modal-btns">

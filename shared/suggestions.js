@@ -59,7 +59,7 @@ async function workoutSuggestions(add) {
     .map(r => r.value);
 
   if (!sessions.length) {
-    add('tip', 'Workout', '💪', 'No workouts yet — log one or import your Hevy history.', 'workout/');
+    add('tip', 'Workout', '💪', 'No workouts yet — log one or restore your backup.', 'workout/');
     return;
   }
 

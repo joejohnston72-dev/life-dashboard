@@ -114,7 +114,7 @@ export const CUES = {
   'Dragon Flag': ['Grip behind the head, body rigid','Lower the straight body slowly','Keep the core braced — no sagging hips'],
   'Pallof Press': ['Anti-rotation — resist the cable’s pull','Press straight out and back, hips square','Brace the core throughout'],
 
-  // ── User's Hevy movements not covered above ──
+  // ── User's movements not covered above ──
   'Incline Bench Press (Smith Machine)': ['Set bench to 30–45° and position it so the bar meets the upper chest','Shoulder blades retracted and pinned; grip just outside shoulders','Fixed path — control the negative and don’t bounce off the chest'],
   'Chest Supported Incline Row (Dumbbell)': ['Chest glued to the incline pad — no torso momentum','Row the elbows up and back, squeezing the shoulder blades','Full stretch at the bottom without dropping the shoulders'],
   'Close Grip Palms Up Pulldown': ['Underhand grip ~shoulder width, slight lean back','Pull to the upper chest, driving the elbows to your sides','Squeeze lats and biceps; control the stretch on the way up'],
@@ -136,7 +136,7 @@ export const CUES = {
   'Elliptical': ['Stand tall, light grip on the handles','Push through the whole foot','Engage the core; smooth stride'],
 };
 
-// Explicit aliases: variant names (mostly Hevy's naming) → canonical CUES key.
+// Explicit aliases: variant exercise names → canonical CUES key.
 const CUE_ALIASES = {
   'Seated Cable Row - V Grip':            'Seated Cable Row',
   'Seated Cable Row - Bar Grip':          'Seated Cable Row',

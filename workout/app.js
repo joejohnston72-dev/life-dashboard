@@ -23,7 +23,7 @@ if (!session) { window.location.href = '../'; throw new Error('unauthenticated')
 // ── Constants & helpers ───────────────────────────────────────────────────────
 const STORE = 'workout';
 const uid   = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
-// Deterministic ID for Hevy imports — same workout always gets same key
+// Deterministic ID for CSV imports — same workout always gets same key
 function stableId(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
@@ -80,7 +80,7 @@ function parseToDate(str) {
     return new Date(str + 'T12:00:00');
   if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(str))
     return new Date(str.replace(' ', 'T'));
-  // Hevy format: "4 Jun 2026, 17:14"
+  // Common tracker format: "4 Jun 2026, 17:14"
   const hm = str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})/);
   if (hm) {
     const mon = MONTHS[hm[2].toLowerCase()];
@@ -1585,7 +1585,7 @@ async function addExerciseToSession(name, category) {
 
 // Guarantee every exercise passed is present in the exercise repository. Anything
 // added during a workout — picked, coach-drafted, from a prefilled routine, or
-// Hevy-imported — becomes selectable next time and shows in the Library. Built-in
+// CSV-imported — becomes selectable next time and shows in the Library. Built-in
 // exercises are left untouched; only genuinely new names get catalogued (custom).
 async function ensureExercisesInRepo(exercises) {
   if (!exercises?.length) return;
@@ -1834,7 +1834,7 @@ document.getElementById('libraryAddBtn').onclick = async () => {
     : `"${split.name}" is already in your routines.`);
 };
 
-// ── Streak (weekly, Hevy-style, with an editable seed) ────────────────────────
+// ── Streak (weekly, with an editable seed) ────────────────────────
 async function renderStreakChip(sessions) {
   const settings = await getStreakSettings();
   const { weeks, thisWeekCount, target } = computeStreak(sessions, settings);
@@ -1919,7 +1919,7 @@ async function renderDashboard() {
 
   const recentEl = document.getElementById('recentList');
   if (!sessions.length) {
-    recentEl.innerHTML = `<div class="empty-state">No workouts yet.<br>Tap Start Empty Workout or import from Hevy.</div>`;
+    recentEl.innerHTML = `<div class="empty-state">No workouts yet.<br>Tap Start Empty Workout, or restore from cloud in Stats.</div>`;
     return;
   }
   recentEl.innerHTML = sessions.slice(0,5).map(s => workoutCard(s)).join('');
@@ -2067,7 +2067,7 @@ async function renderHistory() {
   const el = document.getElementById('historyList');
   document.getElementById('buildRoutinesBtn').style.display = sessions.length ? '' : 'none';
   if (!sessions.length) {
-    el.innerHTML = `<div class="empty-state">No history yet.<br>Import your Hevy CSV to load past workouts.</div>`;
+    el.innerHTML = `<div class="empty-state">No history yet.<br>Restore from cloud, or import a backup, in Stats.</div>`;
     return;
   }
 
@@ -2419,7 +2419,7 @@ document.getElementById('clearHistoryBtn').onclick = async () => {
   if (!confirm('Delete ALL workout sessions? This cannot be undone.\n\nTemplates and custom exercises will be kept.')) return;
   const all = await db.getAll(STORE);
   for (const { key } of all) {
-    // Hevy imports are also stored under 'session-<hevy-id>' — always this prefix.
+    // All sessions are stored under the session- prefix.
     if (key.startsWith('session-')) {
       await db.delete(STORE, key);
     }
@@ -2435,39 +2435,99 @@ document.getElementById('clearHistoryBtn').onclick = async () => {
   renderDashboard();
 };
 
-// ── Hevy CSV import ───────────────────────────────────────────────────────────
+// ── Backup & restore ──────────────────────────────────────────────────────────
+function showProgress(msg, hideAfter = 0) {
+  const progress = document.getElementById('importProgress');
+  progress.style.display = 'block';
+  progress.textContent = msg;
+  if (hideAfter) setTimeout(() => { progress.style.display = 'none'; }, hideAfter);
+}
+function countSessions() { return loadSessions().then(s => s.length); }
+
+// Pull the cloud copy back onto this device (paginated — see db.js). Reports the
+// number of items restored so it's obvious whether the cloud has the history.
+document.getElementById('restoreCloudBtn').onclick = async () => {
+  showProgress('Restoring from cloud…');
+  try {
+    const n = await db.sync();
+    const sessions = await countSessions();
+    showProgress(`✅ Restored ${n} item${n === 1 ? '' : 's'} from cloud — ${sessions} workout${sessions === 1 ? '' : 's'} in history.`, 6000);
+    renderHistory(); renderDashboard(); renderStats();
+  } catch (err) { showProgress('❌ Restore failed: ' + err.message, 6000); }
+};
+
+// Push everything on this device up to the cloud (batched — see db.js). Use this
+// after an import, or any time you want a guaranteed cloud copy.
+document.getElementById('backupCloudBtn').onclick = async () => {
+  showProgress('Backing up to cloud…');
+  try {
+    const n = await db.backup();
+    showProgress(`✅ Backed up ${n} item${n === 1 ? '' : 's'} to the cloud.`, 6000);
+  } catch (err) { showProgress('❌ Backup failed: ' + err.message, 6000); }
+};
+
+// Download a JSON backup of everything in the workout store — a device-owned
+// copy that doesn't depend on the cloud at all.
+document.getElementById('exportBtn').onclick = async () => {
+  try {
+    const entries = await db.getAll(STORE);
+    const blob = new Blob([JSON.stringify({ app: 'gym', version: 1, exportedAt: new Date().toISOString(), entries }, null, 0)],
+      { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gym-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showProgress(`✅ Exported ${entries.length} items. Save the file somewhere safe.`, 6000);
+  } catch (err) { showProgress('❌ Export failed: ' + err.message, 6000); }
+};
+
+// ── Import (JSON backup, or a CSV workout export) ─────────────────────────────
 document.getElementById('importBtn').onclick = () => document.getElementById('csvInput').click();
 
 document.getElementById('csvInput').onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
-  const progress = document.getElementById('importProgress');
-  progress.style.display = 'block';
-  progress.textContent = 'Reading file…';
-
+  showProgress('Reading file…');
   try {
     const text = await file.text();
-    const sessions = parseHevyCSV(text);
-    progress.textContent = `Importing ${sessions.length} workouts…`;
-
-    for (const s of sessions) {
-      const existing = await db.get(STORE, 'session-' + s.id);
-      if (!existing || !existing.date || existing.date === 'Invalid Date') {
-        await db.set(STORE, 'session-' + s.id, s);
+    let imported = 0;
+    const trimmed = text.trimStart();
+    if (file.name.endsWith('.json') || trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      // JSON backup produced by Export above.
+      const data = JSON.parse(text);
+      const entries = Array.isArray(data) ? data : (data.entries || []);
+      for (const { key, value } of entries) {
+        if (!key || value == null) continue;
+        await db.set(STORE, key, value);
+        imported++;
       }
+      showProgress(`✅ Imported ${imported} items from backup.`, 4000);
+    } else {
+      // CSV workout export (common tracker columns supported).
+      const sessions = parseWorkoutCSV(text);
+      for (const s of sessions) {
+        const existing = await db.get(STORE, 'session-' + s.id);
+        if (!existing || !existing.date || existing.date === 'Invalid Date') {
+          await db.set(STORE, 'session-' + s.id, s);
+          imported++;
+        }
+      }
+      showProgress(`✅ Imported ${imported} workouts.`, 4000);
     }
-
-    progress.textContent = `✅ Imported ${sessions.length} workouts from Hevy`;
-    setTimeout(() => { progress.style.display = 'none'; }, 3000);
-    renderHistory();
-    renderDashboard();
+    db.backup();   // make sure the imported data reaches the cloud too
+    renderHistory(); renderDashboard(); renderStats();
   } catch (err) {
-    progress.textContent = '❌ Import failed: ' + err.message;
+    showProgress('❌ Import failed: ' + err.message, 6000);
   }
   e.target.value = '';
 };
 
-function parseHevyCSV(text) {
+// Parse a workout CSV export. Understands the common column layout (title,
+// start/end time, exercise_title, weight_kg, reps, set_type, rpe) used by
+// mainstream trackers, TSV or comma-delimited.
+function parseWorkoutCSV(text) {
   const rows   = parseCSV(text);
   if (rows.length < 2) throw new Error('Empty or invalid CSV');
   const header = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g,'_'));
@@ -2540,7 +2600,7 @@ function guessCategory(name) {
   return 'Back'; // fallback
 }
 
-// Delimiter-detecting parser — handles TSV (Hevy) and CSV
+// Delimiter-detecting parser — handles TSV and CSV
 function parseCSV(text) {
   const firstLine = text.split('\n')[0];
   const tabs   = (firstLine.match(/\t/g)  || []).length;

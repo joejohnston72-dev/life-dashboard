@@ -58,9 +58,18 @@ function idbGetAll(store) {
 }
 
 // ── Supabase remote ───────────────────────────────────────────────────────────
-async function getUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id ?? null;
+// Cache the user id. remoteSet used to call auth.getUser() (a network round-trip)
+// on EVERY write — during a bulk import of hundreds of sessions that meant
+// hundreds of concurrent auth calls, which rate-limited and silently dropped most
+// of the cloud writes. Resolve it once and reuse the promise.
+let _uidPromise = null;
+function getUserId() {
+  if (!_uidPromise) {
+    _uidPromise = supabase.auth.getUser()
+      .then(({ data }) => data?.user?.id ?? null)
+      .catch(() => null);
+  }
+  return _uidPromise;
 }
 
 async function remoteSet(store, key, value) {
@@ -76,17 +85,49 @@ async function remoteDel(store, key) {
     .eq('user_id', user_id).eq('store', store).eq('key', key);
 }
 
+// Pull the cloud copy into IndexedDB. PAGINATED — PostgREST caps a select at
+// 1000 rows, and the `entries` table holds every store (workout + calories + …),
+// so an un-paged pull silently dropped rows once the account grew past 1000.
+// That's exactly how history "vanished" while the few routine rows survived.
 async function syncFromSupabase() {
   const user_id = await getUserId();
   if (!user_id) return 0;
-  const { data, error } = await supabase.from('entries')
-    .select('store, key, value')
-    .eq('user_id', user_id);
-  if (error || !data) return 0;
-  for (const row of data) {
-    await idbSet(row.store, row.key, row.value);
+  const PAGE = 1000;
+  let from = 0, total = 0;
+  for (;;) {
+    const { data, error } = await supabase.from('entries')
+      .select('store, key, value')
+      .eq('user_id', user_id)
+      .order('store', { ascending: true })
+      .order('key',   { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error || !data || !data.length) break;
+    for (const row of data) await idbSet(row.store, row.key, row.value);
+    total += data.length;
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
-  return data.length;
+  return total;
+}
+
+// Push EVERYTHING in local IndexedDB up to the cloud, batched — a reliable
+// "back up now" that also repairs any rows that failed to sync during a bulk
+// import. Returns the number of rows written.
+async function syncToSupabase() {
+  const user_id = await getUserId();
+  if (!user_id) return 0;
+  let n = 0;
+  for (const store of STORES) {
+    let rows;
+    try { rows = await idbGetAll(store); } catch (_) { continue; }
+    const payload = rows.map(({ key, value }) => ({ user_id, store, key, value }));
+    for (let i = 0; i < payload.length; i += 200) {
+      const chunk = payload.slice(i, i + 200);
+      const { error } = await supabase.from('entries').upsert(chunk);
+      if (!error) n += chunk.length;
+    }
+  }
+  return n;
 }
 
 // Initial cloud pull, kicked off at import time but exposed as a PROMISE so the
@@ -114,8 +155,9 @@ const db = {
     remoteDel(store, key);
   },
 
-  clear: idbClear,
-  sync:  syncFromSupabase,
+  clear:  idbClear,
+  sync:   syncFromSupabase,   // cloud → device (paginated)
+  backup: syncToSupabase,     // device → cloud (batched)
 };
 
 export default db;

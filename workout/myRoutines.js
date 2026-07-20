@@ -1,9 +1,9 @@
-// User's actual current routine, imported from Hevy (5-day split:
+// User's actual current routine (5-day split:
 // Upper Strength / Lower Strength / Push Hypertrophy / Pull Hypertrophy / Legs Hypertrophy).
 // One-time seeded into the templates store on first load — see
 // seedMyRoutinesOnce() / fixIncompletePushDayOnce() in app.js.
 //
-// Rep targets use the LOW end of each Hevy rep range (double-progression: work
+// Rep targets use the LOW end of each rep range (double-progression: work
 // up through the range on the same weight before increasing load).
 // "Cardio - 25min Stairs/Cycle" entries are kept as a single set with the
 // target minutes stored in the reps field, since the app's set model is

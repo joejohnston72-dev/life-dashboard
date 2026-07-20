@@ -131,7 +131,7 @@ export function normName(s) {
 }
 
 // What the app can do — so the coach can answer "how do I…" questions.
-const APP_CAPABILITIES = `This app (the user's Hevy replacement) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + Hevy CSV import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it. Nutrition/calories live in a separate CalorieAI app (you can't see that data).`;
+const APP_CAPABILITIES = `This app (the user's training app) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + CSV/JSON backup import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it. Nutrition/calories live in a separate CalorieAI app (you can't see that data).`;
 
 // ── Context builder → system prompt ───────────────────────────────────────────
 export function buildCoachContext(sessions, templates, records, streak, allExercises) {
