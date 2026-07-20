@@ -496,7 +496,10 @@
     #secCoach.active {
       display:flex; flex-direction:column;
       position:fixed; left:0; right:0;
-      top:calc(env(safe-area-inset-top) + 52px);           /* just below the page header */
+      /* --hdr-h is measured from the real .page-header in JS (syncHeaderHeight)
+         so the coach sits flush below it on every device/font — the hardcoded
+         52px overlapped the header. Falls back to the old value pre-measure. */
+      top:var(--hdr-h, calc(env(safe-area-inset-top) + 52px));
       bottom:calc(56px + env(safe-area-inset-bottom));      /* just above the tab bar */
     }
     .coach-thread { flex:1; overflow-y:auto; padding:12px var(--gap) 8px; display:flex; flex-direction:column; gap:10px; }
@@ -527,6 +530,15 @@
     .coach-action-head { display:flex; align-items:center; gap:7px; font-size:0.88rem; font-weight:700; color:var(--green); }
     .coach-action-list { margin:8px 0 0 6px; padding:0; list-style:none; font-size:0.8rem; color:var(--text); line-height:1.7; }
     .coach-action-list li::before { content:'· '; color:var(--text-muted); }
+    /* Coach routine-improvement suggestion card */
+    .coach-suggestion {
+      align-self:flex-start; max-width:92%;
+      background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.45);
+      border-radius:14px; padding:13px 14px;
+    }
+    .coach-sugg-head { display:flex; align-items:center; gap:7px; font-size:0.82rem; font-weight:700; color:var(--purple); margin-bottom:8px; }
+    .coach-sugg-body { font-size:0.86rem; line-height:1.6; color:var(--text); }
+    .coach-sugg-body b { font-weight:700; }
     .coach-chips { flex-shrink:0; display:flex; gap:7px; padding:6px var(--gap); overflow-x:auto; }
     .coach-chips::-webkit-scrollbar { display:none; }
     .coach-chip {
@@ -745,7 +757,6 @@
     <div class="section-heading" style="margin-top:18px">History</div>
     <input class="form-input" id="histSearch" placeholder="Search history — title or exercise…" style="margin-bottom:10px">
     <button class="import-btn" id="buildRoutinesBtn" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;display:none"><i data-lucide="zap" data-size="16"></i> Build Routines from History</button>
-    <button class="import-btn" id="clearHistoryBtn" style="border-color:rgba(244,63,94,0.4);color:#f43f5e"><i data-lucide="trash-2" data-size="16"></i> Clear all workout history</button>
     <!-- Routine builder panel -->
     <div id="routineBuilder" style="display:none;background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:14px">
       <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:12px">Save as Routine — tap to add</div>
@@ -759,6 +770,7 @@
   <div class="section" id="secCoach">
     <div class="coach-thread" id="coachThread"></div>
     <div class="coach-chips" id="coachChips">
+      <button class="coach-chip" data-prompt="Analyse my routines, history, PBs and the exercises I keep swapping, then suggest one concrete improvement to a routine." data-force="suggest_routine_edit"><i data-lucide="zap" data-size="15"></i> Improve my routines</button>
       <button class="coach-chip" data-prompt="Draft me a routine" data-force="1"><i data-lucide="hammer" data-size="15"></i> Draft a routine</button>
       <button class="coach-chip" data-prompt="What should I train today?" data-force="1"><i data-lucide="calendar" data-size="15"></i> Today's session</button>
       <button class="coach-chip" data-prompt="How's my progress? What's lagging and what should I push?"><i data-lucide="chart-line" data-size="15"></i> My progress</button>

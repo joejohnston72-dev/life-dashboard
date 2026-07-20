@@ -115,6 +115,35 @@ export const LOG_WORKOUTS_TOOL = {
   },
 };
 
+export const EDIT_ROUTINE_TOOL = {
+  name: 'suggest_routine_edit',
+  description: "Propose ONE concrete, high-value change to a saved routine, based on the user's history, PBs, training balance, and how they've been swapping/editing exercises. Use when they ask you to analyse/improve/review their routines. Give a short rationale plus specific edit operations the app can apply with one tap.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      routine:   { type: 'string', description: 'Exact name of the saved routine to change (from SAVED ROUTINES).' },
+      rationale: { type: 'string', description: 'One or two plain sentences: what to change and why it helps.' },
+      operations: {
+        type: 'array',
+        description: 'The concrete edits. Keep it focused — usually 1–3 ops.',
+        items: {
+          type: 'object',
+          properties: {
+            action:      { type: 'string', enum: ['replace', 'add', 'remove', 'set_reps'] },
+            exercise:    { type: 'string', description: 'Existing exercise name in the routine (replace / remove / set_reps).' },
+            newExercise: { type: 'string', description: 'New exercise name (replace / add).' },
+            category:    { type: 'string', enum: CATEGORIES, description: 'Category for an added/new exercise.' },
+            sets:        { type: 'integer', description: 'Number of working sets (add / set_reps).' },
+            reps:        { type: 'integer', description: 'Target reps (add / set_reps).' },
+          },
+          required: ['action'],
+        },
+      },
+    },
+    required: ['routine', 'rationale', 'operations'],
+  },
+};
+
 // ── Name normalisation (ported from cues.js — that copy is not exported) ──────
 export function normName(s) {
   return String(s).toLowerCase()
@@ -131,7 +160,7 @@ export function normName(s) {
 }
 
 // What the app can do — so the coach can answer "how do I…" questions.
-const APP_CAPABILITIES = `This app (the user's training app) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + CSV/JSON backup import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it. Nutrition/calories live in a separate CalorieAI app (you can't see that data).`;
+const APP_CAPABILITIES = `This app (the user's training app) can: log workouts live (sets with kg×reps, or reps/time/distance for other exercise types), auto rest-timer per exercise with a chime, previous-performance ghosts, PB trophies, weekly streak, a Stats tab (monthly calendar, weekly volume, muscle balance, per-exercise progression charts) with workout history + CSV/JSON backup import, a routine Library and saved routines, and this AI Coach. Swipe a set left to delete / right for a drop set; long-press an exercise to reorder; "…" on an exercise to replace it or superset it.`;
 
 // ── Context builder → system prompt ───────────────────────────────────────────
 export function buildCoachContext(sessions, templates, records, streak, allExercises) {
@@ -180,7 +209,8 @@ HOW TO RESPOND
 ACTIONS YOU CAN TAKE (make real changes in the app)
 - add_library_exercises — add custom exercises to the user's library when they ask you to.
 - log_workouts — log/backfill completed sessions into their history, including on past dates (use TODAY to compute them).
-Call these when the user clearly asks you to add/log/backfill something. Do it, then confirm briefly in text what you did. Don't call them for hypothetical suggestions.
+- suggest_routine_edit — when asked to analyse/improve/review their routines, propose ONE concrete change to a specific saved routine (a rationale + edit operations). The user gets a one-tap "Apply" button; don't rewrite the whole routine — target the highest-value tweak from their data (lagging muscle groups, stalled lifts, exercises they keep swapping out, over/under-volume).
+Call these when the user clearly asks. Do it, then confirm briefly in text. Don't call them for purely hypothetical talk.
 
 APP CAPABILITIES (for "how do I…" questions)
 ${APP_CAPABILITIES}
@@ -307,8 +337,11 @@ export async function callCoach({ apiMessages, system, forceTool = false, getKey
     model: MODEL,
     max_tokens: forceTool ? 1600 : 2000,   // more room for detailed chat answers
     system,
-    tools: [DRAFT_ROUTINE_TOOL, ADD_EXERCISES_TOOL, LOG_WORKOUTS_TOOL],
-    tool_choice: forceTool ? { type: 'tool', name: 'draft_routine' } : { type: 'auto' },
+    tools: [DRAFT_ROUTINE_TOOL, ADD_EXERCISES_TOOL, LOG_WORKOUTS_TOOL, EDIT_ROUTINE_TOOL],
+    // forceTool may be a boolean (legacy → draft_routine) or a specific tool name.
+    tool_choice: forceTool
+      ? { type: 'tool', name: (typeof forceTool === 'string' && forceTool !== '1') ? forceTool : 'draft_routine' }
+      : { type: 'auto' },
     messages,
   };
 

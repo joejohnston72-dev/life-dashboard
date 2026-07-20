@@ -159,6 +159,7 @@ let activeTab = 'Dashboard';
 document.querySelectorAll('.tab').forEach(btn => {
   btn.onclick = () => {
     activeTab = btn.dataset.tab;
+    if (typeof syncHeaderHeight === 'function') syncHeaderHeight();   // keep Coach flush below the header
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -2414,26 +2415,8 @@ document.getElementById('cuesModal').addEventListener('click', e => {
 document.getElementById('libSearch').oninput = renderLibrary;
 document.getElementById('histSearch').oninput = renderHistory;
 
-// ── Clear history ─────────────────────────────────────────────────────────────
-document.getElementById('clearHistoryBtn').onclick = async () => {
-  if (!confirm('Delete ALL workout sessions? This cannot be undone.\n\nTemplates and custom exercises will be kept.')) return;
-  const all = await db.getAll(STORE);
-  for (const { key } of all) {
-    // All sessions are stored under the session- prefix.
-    if (key.startsWith('session-')) {
-      await db.delete(STORE, key);
-    }
-  }
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from('entries').delete()
-        .eq('user_id', user.id).eq('store', STORE).like('key', 'session-%');
-    }
-  } catch (_) {}
-  renderHistory();
-  renderDashboard();
-};
+// Clear-history was intentionally removed — history is edit-only now, so there's
+// no one-tap way to wipe it (and no matching cloud delete).
 
 // ── Backup & restore ──────────────────────────────────────────────────────────
 function showProgress(msg, hideAfter = 0) {
@@ -2639,16 +2622,28 @@ function parseCommaCSV(text) {
   return rows;
 }
 
-// ── Standalone-app chrome: no browser history to go "back" to ─────────────────
+// Keep the Coach tab flush below the real page header (its height varies with
+// font + safe-area, so a hardcoded offset overlapped it — see #secCoach CSS).
+function syncHeaderHeight() {
+  const el = document.querySelector('.page-header');
+  if (!el) return;
+  const h = Math.ceil(el.getBoundingClientRect().height);
+  if (h) document.documentElement.style.setProperty('--hdr-h', h + 'px');
+}
+syncHeaderHeight();
+addEventListener('resize', syncHeaderHeight);
+addEventListener('load', syncHeaderHeight);
+if (window.visualViewport) visualViewport.addEventListener('resize', syncHeaderHeight);
+
+// ── App chrome ────────────────────────────────────────────────────────────────
+// This is a standalone app now — there's no hub to go "back" to. Hide the back
+// button when installed; in a browser tab keep it as a plain history-back.
 (function fixChrome() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const homeBtn = document.getElementById('homeBtn');
   if (!homeBtn) return;
   if (standalone) {
-    homeBtn.innerHTML = icon('house', { size: 22 });
-    homeBtn.onclick = () => { location.href = '../'; };
-    homeBtn.title = 'Dashboard hub';
-    homeBtn.setAttribute('data-tip', 'Dashboard hub');
+    homeBtn.style.display = 'none';
   } else {
     homeBtn.onclick = () => history.back();
   }
@@ -2705,7 +2700,79 @@ function renderCoachMessage(m) {
   }
   if (m.routine) wrap.appendChild(renderRoutineCard(m.routine));
   if (m.action)  wrap.appendChild(renderActionCard(m.action));
+  if (m.suggestion) wrap.appendChild(renderSuggestionCard(m.suggestion));
   return wrap;
+}
+
+// ── Coach routine-improvement suggestion (analyse → apply with one tap) ───────
+function describeOp(op) {
+  const n = esc(op.newExercise || ''), e = esc(op.exercise || '');
+  if (op.action === 'replace')  return `Swap <b>${e}</b> → <b>${n}</b>`;
+  if (op.action === 'add')      return `Add <b>${n}</b> (${op.sets || 3}×${op.reps || 10})`;
+  if (op.action === 'remove')   return `Remove <b>${e}</b>`;
+  if (op.action === 'set_reps') return `<b>${e}</b> → ${op.sets ? op.sets + '×' : ''}${op.reps || ''} reps`;
+  return esc(op.action || '');
+}
+
+function renderSuggestionCard(sug) {
+  const card = document.createElement('div');
+  card.className = 'coach-suggestion';
+  const ops = (sug.operations || []).map(describeOp).join('<br>');
+  card.innerHTML = `
+    <div class="coach-sugg-head">${icon('zap', { size: 15 })} Suggested change · ${esc(sug.routine || '')}</div>
+    <div class="coach-sugg-body">${ops || '—'}</div>
+    <div class="coach-routine-btns">
+      <button class="cr-start cs-apply">✓ Apply to routine</button>
+      <button class="cr-save cs-dismiss">Dismiss</button>
+    </div>`;
+  card.querySelector('.cs-apply').onclick = async ev => {
+    const btn = ev.currentTarget; btn.disabled = true;
+    const ok = await applyRoutineEdit(sug);
+    btn.textContent = ok ? '✓ Applied' : "Couldn't find that routine";
+    if (ok) card.querySelector('.cs-dismiss')?.remove();
+  };
+  card.querySelector('.cs-dismiss').onclick = () => card.remove();
+  return card;
+}
+
+async function applyRoutineEdit(sug) {
+  const templates = await getTemplates();
+  const wanted = String(sug?.routine || '').toLowerCase();
+  const t = templates.find(x => x.name.toLowerCase() === wanted)
+         || templates.find(x => x.name.toLowerCase().includes(wanted) && wanted);
+  if (!t) return false;
+  t.exercises ||= [];
+  const findEx = name => {
+    const n = String(name || '').toLowerCase();
+    return t.exercises.find(e => e.name.toLowerCase() === n)
+        || t.exercises.find(e => n && e.name.toLowerCase().includes(n));
+  };
+  const catOf = (name, cat) => CATEGORIES.includes(cat) ? cat : guessCategory(name || '');
+  for (const op of (sug.operations || [])) {
+    if (op.action === 'replace' && op.newExercise) {
+      const ex = findEx(op.exercise);
+      if (ex) { ex.name = op.newExercise; ex.category = catOf(op.newExercise, op.category);
+                ensureExercisesInRepo([{ name: ex.name, category: ex.category }]); }
+    } else if (op.action === 'add' && op.newExercise) {
+      const sets = Math.max(1, op.sets || 3), reps = op.reps || 10;
+      const category = catOf(op.newExercise, op.category);
+      t.exercises.push({ name: op.newExercise, category, restTime: 90,
+        sets: Array.from({ length: sets }, () => ({ weight: 0, reps, type: 'normal' })) });
+      ensureExercisesInRepo([{ name: op.newExercise, category }]);
+    } else if (op.action === 'remove') {
+      const ex = findEx(op.exercise);
+      if (ex) t.exercises = t.exercises.filter(e => e !== ex);
+    } else if (op.action === 'set_reps') {
+      const ex = findEx(op.exercise);
+      if (ex) {
+        const n = Math.max(1, op.sets || ex.sets?.length || 3), reps = op.reps || ex.sets?.[0]?.reps || 10;
+        ex.sets = Array.from({ length: n }, (_, k) => ({ ...(ex.sets?.[k] || { weight: 0, type: 'normal' }), reps }));
+      }
+    }
+  }
+  await db.set(STORE, 'templates', templates);
+  renderDashboard();
+  return true;
 }
 
 // Confirmation card for an action the coach performed (add exercises / log workouts).
@@ -2860,8 +2927,11 @@ async function sendCoach(text, forceTool = false) {
       const res = await coachLogWorkouts(tool.input);
       botMsg.action = res.summary;
       if (!botMsg.text) botMsg.text = res.text;
+    } else if (tool?.name === 'suggest_routine_edit') {
+      botMsg.suggestion = tool.input;
+      if (!botMsg.text) botMsg.text = tool.input?.rationale || 'Here’s a change I’d suggest:';
     }
-    if (!botMsg.text && !botMsg.routine && !botMsg.action) botMsg.text = '(no response)';
+    if (!botMsg.text && !botMsg.routine && !botMsg.action && !botMsg.suggestion) botMsg.text = '(no response)';
     coachThread.push(botMsg);
     thread.appendChild(renderCoachMessage(botMsg));
     persistCoachThread();
@@ -2887,7 +2957,8 @@ document.getElementById('coachInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); sendCoach(e.target.value); }
 });
 document.querySelectorAll('.coach-chip[data-prompt]').forEach(chip => {
-  chip.onclick = () => sendCoach(chip.dataset.prompt, chip.dataset.force === '1');
+  // data-force may be "1" (force draft_routine) or a specific tool name.
+  chip.onclick = () => sendCoach(chip.dataset.prompt, chip.dataset.force || false);
 });
 document.getElementById('coachClearBtn').onclick = async () => {
   if (!confirm('Clear the coach chat?')) return;
