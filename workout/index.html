@@ -3,19 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Gym App</title>
+  <title>ARC</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0b0b10">
+  <meta name="theme-color" content="#0c0c0d">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Gym App">
+  <meta name="apple-mobile-web-app-title" content="ARC">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="stylesheet" href="../styles.css">
   <style>
-    :root { --blue: #38bdf8; --green: #34d399; --red: #f43f5e; --amber: #fbbf24; --purple: #a78bfa; }
+    :root {
+      --blue: #38bdf8;  --blue-rgb: 56,189,248;    /* primary accent */
+      --orange: #fb923c; --orange-rgb: 251,146,60;  /* secondary energy accent */
+      --green: #34d399; --green-rgb: 52,211,153;
+      --red: #f43f5e;   --red-rgb: 244,63,94;       /* destructive */
+      --amber: #fbbf24; --amber-rgb: 251,191,36;    /* PB / streak */
+      --purple: #a78bfa; --purple-rgb: 167,139,250; /* superset / AI */
+    }
     /* Stop iOS from auto-inflating text after a DOM reflow (e.g. deleting a set/
        exercise) — keeps the smaller, consistent size. */
     html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -50,11 +57,11 @@
       height: calc(56px + env(safe-area-inset-bottom));
       padding-bottom: env(safe-area-inset-bottom);
       display: flex;
-      /* Frosted-glass bar: translucent fill + blur, iOS-style */
-      background: rgba(21,21,28,0.82);
+      /* Frosted-glass bar: translucent charcoal fill + blur, iOS-style */
+      background: rgba(28,28,30,0.82);
       -webkit-backdrop-filter: blur(18px) saturate(1.6);
       backdrop-filter: blur(18px) saturate(1.6);
-      border-top: 1px solid rgba(255,255,255,0.07); z-index: 10;
+      border-top: 1px solid rgba(255,255,255,0.10); z-index: 10;
     }
     .tab {
       flex:1; background:none; border:none; color:var(--text-muted);
@@ -95,6 +102,7 @@
       -webkit-tap-highlight-color:transparent;
     }
     .routines-empty { color:var(--text-muted); font-size:0.82rem; line-height:1.5; padding:4px 2px 8px; }
+    .routines-hint { color:var(--text-muted); font-size:0.72rem; padding:2px 2px 6px; opacity:0.7; }
 
     .workout-card {
       background: var(--surface); border:1px solid var(--border); border-radius: var(--radius);
@@ -118,9 +126,15 @@
       display:flex; align-items:center; justify-content:space-between;
     }
     .template-card:active { background: var(--surface2); }
+    .template-card { transition: background .2s ease, box-shadow .2s ease, transform .2s ease; -webkit-user-select:none; user-select:none; }
+    /* Long-press to delete — fills toward the destructive colour so the hold reads as intentional. */
+    .template-card.tc-holding {
+      background: var(--surface2);
+      box-shadow: inset 0 0 0 1px rgba(var(--red-rgb, 244,63,94), 0.5);
+      transform: scale(0.985);
+    }
     .tc-name { font-size:0.9rem; font-weight:700; }
     .tc-ex   { font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
-    .tc-del  { background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.9rem;padding:4px 8px;opacity:.5; }
 
     .empty-state { text-align:center;color:var(--text-muted);padding:30px 0;font-size:0.88rem;line-height:1.7; }
 
@@ -521,6 +535,14 @@
     .coach-routine-btns button { flex:1; padding:11px; border:none; border-radius:10px; font-size:0.85rem; font-weight:700; cursor:pointer; }
     .cr-start { background:var(--blue); color:#000; }
     .cr-save  { background:var(--surface2); color:var(--text); }
+    /* Multi-day split card — orange energy accent, one day per row */
+    .coach-split { border-color:rgba(var(--orange-rgb),0.4); }
+    .coach-split .coach-routine-name { display:flex; align-items:center; gap:7px; }
+    .coach-split-day { padding:8px 0; border-top:1px solid var(--border); }
+    .coach-split-day:first-of-type { border-top:none; }
+    .coach-split-day-name { font-size:0.82rem; font-weight:700; color:var(--orange); }
+    .coach-split-day-ex { font-size:0.75rem; color:var(--text-muted); margin-top:2px; line-height:1.4; }
+    .coach-split .cs-save-all { background:var(--orange); color:#000; }
     /* Coach action confirmation card (exercises added / workouts logged) */
     .coach-action {
       align-self:flex-start; max-width:92%;
@@ -639,17 +661,19 @@
     #historyDetail {
       position:fixed; inset:0; z-index:40; background:var(--bg);
       transform:translateX(100%); transition:transform .25s ease;
-      overflow-y:auto;
+      overflow-y:auto; overflow-x:hidden;
     }
     #historyDetail.visible { transform:translateX(0); }
+    #hdBody { max-width:100%; }
     .hd-set-row { display:flex; gap:12px; font-size:0.82rem; padding:4px 0; color:var(--text-muted); }
-    .hd-set-num { color:var(--text-muted); min-width:20px; }
+    .hd-set-num { color:var(--text-muted); min-width:20px; flex:0 0 auto; }
     .hd-set-val { color:var(--text); font-weight:500; }
-    .hd-set-edit { align-items:center; }
-    .hd-edit-fields { display:flex; gap:8px; flex:1; }
+    .hd-set-edit { align-items:center; gap:10px; }
+    .hd-edit-fields { display:flex; gap:8px; flex:1 1 auto; min-width:0; }
     .hd-edit-input {
-      flex:1; min-width:0; background:var(--surface2); border:1px solid rgba(56,189,248,0.3);
-      border-radius:8px; padding:8px 6px; color:var(--text); font-size:16px; text-align:center;
+      flex:1 1 0; width:0; min-width:0; box-sizing:border-box;
+      background:var(--surface2); border:1px solid var(--border-accent, rgba(56,189,248,0.3));
+      border-radius:8px; padding:10px 8px; color:var(--text); font-size:16px; text-align:center;
       outline:none; -moz-appearance:textfield;
     }
     .hd-edit-input::-webkit-outer-spin-button, .hd-edit-input::-webkit-inner-spin-button { -webkit-appearance:none; }
@@ -710,8 +734,8 @@
 <!-- ── Main app ── -->
 <div id="mainApp">
   <div class="page-header">
-    <button class="back-btn" id="homeBtn" data-tip="Dashboard hub" title="Dashboard hub"><i data-lucide="arrow-left" data-size="24"></i></button>
-    <h1 class="page-title" id="mainTitle">Gym App</h1>
+    <button class="back-btn" id="homeBtn" data-tip="Back" title="Back"><i data-lucide="arrow-left" data-size="24"></i></button>
+    <h1 class="page-title" id="mainTitle">ARC</h1>
   </div>
 
   <!-- Dashboard -->
@@ -727,7 +751,8 @@
       </div>
     </div>
     <div id="templatesList"></div>
-    <div id="routinesEmpty" class="routines-empty" style="display:none">No routines yet — tap <strong>📚 Library</strong> for ready-made splits, or <strong>+ New Routine</strong> to build your own.</div>
+    <div id="routinesHint" class="routines-hint" style="display:none">Tap a routine to start · hold to delete</div>
+    <div id="routinesEmpty" class="routines-empty" style="display:none">No routines yet — tap <strong>Library</strong> for ready-made splits, or <strong>New Routine</strong> to build your own.</div>
 
     <div class="section-heading" style="margin-top:16px">Recent</div>
     <div id="recentList"></div>
@@ -771,6 +796,7 @@
     <div class="coach-thread" id="coachThread"></div>
     <div class="coach-chips" id="coachChips">
       <button class="coach-chip" data-prompt="Analyse my routines, history, PBs and the exercises I keep swapping, then suggest one concrete improvement to a routine." data-force="suggest_routine_edit"><i data-lucide="zap" data-size="15"></i> Improve my routines</button>
+      <button class="coach-chip" data-prompt="Analyse my training balance — what am I doing too much and too little — then build me a new split that rebalances it, and tell me what you changed and why."><i data-lucide="layout-dashboard" data-size="15"></i> Build a split</button>
       <button class="coach-chip" data-prompt="Draft me a routine" data-force="1"><i data-lucide="hammer" data-size="15"></i> Draft a routine</button>
       <button class="coach-chip" data-prompt="What should I train today?" data-force="1"><i data-lucide="calendar" data-size="15"></i> Today's session</button>
       <button class="coach-chip" data-prompt="How's my progress? What's lagging and what should I push?"><i data-lucide="chart-line" data-size="15"></i> My progress</button>

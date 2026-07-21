@@ -6,7 +6,9 @@ const STORE = 'workout';
 
 export const e1RM = (w, r) => (r > 0 ? w * (1 + r / 30) : w); // Epley
 
-const isWorkingSet = s => s && s.done && (s.weight || 0) > 0 && s.type !== 'warmup';
+// A drop set is a continuation of the set before it (lighter weight, to failure),
+// not a standalone effort — so it never counts toward PBs/records, same as warmups.
+const isWorkingSet = s => s && s.done && (s.weight || 0) > 0 && s.type !== 'warmup' && s.type !== 'dropset';
 
 // ── Records ───────────────────────────────────────────────────────────────────
 // Build per-exercise all-time records from past sessions.

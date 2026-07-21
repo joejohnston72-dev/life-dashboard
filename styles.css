@@ -1,18 +1,22 @@
-/* Design tokens — update to match calorieAI if they differ */
+/* Design tokens — ARC charcoal palette.
+   Neutral charcoal/grey surfaces (iOS system-gray tones) for an Apple-like
+   premium feel, one electric-blue primary accent, warm orange/red as the
+   secondary energy accents. Surfaces are neutral (no blue tint) so the accent
+   is what carries the colour. */
 :root {
-  --bg:        #0b0b10;
-  --surface:   #15151c;
-  --surface2:  #1e1e26;
-  --accent:    #f43f5e;
-  --accent2:   #0f3460;
-  --text:      #f2f2f7;
-  --text-muted:#8e8e9a;
+  --bg:        #0c0c0d;   /* near-black charcoal canvas */
+  --surface:   #1c1c1e;   /* cards, sheets, tab bar — iOS systemGray6 */
+  --surface2:  #2c2c2e;   /* inputs, chips, nested — iOS systemGray5 */
+  --accent:    #38bdf8;   /* primary accent (electric blue, kept) */
+  --accent2:   #fb923c;   /* secondary accent (warm orange) */
+  --text:      #f5f5f7;
+  --text-muted:#98989f;
   --radius:    16px;
   --gap:       16px;
   --tile-size: clamp(140px, 44vw, 180px);
   /* Hairline border used on every raised surface — gives cards definition on
-     the near-black bg without lightening the fill. */
-  --border:    rgba(255,255,255,0.07);
+     the charcoal bg without lightening the fill. */
+  --border:    rgba(255,255,255,0.10);
 
   /* Typography — Google Sans with a single, app-wide weight hierarchy.
      Only these three weights are used anywhere; everything maps onto them. */

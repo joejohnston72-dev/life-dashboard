@@ -1,12 +1,12 @@
 {
-  "name": "Gym App",
-  "short_name": "Gym App",
+  "name": "ARC",
+  "short_name": "ARC",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0b0b10",
-  "theme_color": "#0b0b10",
+  "background_color": "#0c0c0d",
+  "theme_color": "#0c0c0d",
   "icons": [
     { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]

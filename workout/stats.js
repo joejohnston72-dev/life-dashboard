@@ -149,25 +149,41 @@ export function weeklyVolumeHTML(sessions, weeksBack = 12) {
 }
 
 // ── Muscle balance (working sets over trailing N weeks vs 10–20/wk band) ──────
-export function muscleBalanceHTML(sessions, weeksBack = 4) {
+// Pure data: average working sets per muscle group per week over the window.
+// Shared by the Stats muscle-balance chart and the AI Coach's analysis. The
+// 10–20 sets/week band is the common hypertrophy heuristic — below is
+// maintenance/under-stimulus, above is high/junk-volume territory.
+export function weeklySetsByCategory(sessions, weeksBack = 4) {
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7 * weeksBack);
   const perCat = {};
+  let cardioMin = 0;
   for (const s of sessions) {
     if (dateOf(s) < cutoff) continue;
     for (const ex of s.exercises || []) {
-      if (ex.category === 'Cardio') continue;
+      if (ex.category === 'Cardio') {
+        cardioMin += workingSets(ex).reduce((a, st) => a + (st.reps || 0), 0);
+        continue;
+      }
       perCat[ex.category || 'Other'] = (perCat[ex.category || 'Other'] || 0) + workingSets(ex).length;
     }
   }
   const rows = Object.entries(perCat)
-    .map(([cat, sets]) => ({ cat, perWk: sets / weeksBack }))
+    .map(([cat, sets]) => ({
+      cat, perWk: sets / weeksBack,
+      status: sets / weeksBack < 10 ? 'low' : sets / weeksBack > 20 ? 'high' : 'ok',
+    }))
     .sort((a, b) => b.perWk - a.perWk);
+  return { rows, weeksBack, cardioMinPerWk: cardioMin / weeksBack };
+}
+
+export function muscleBalanceHTML(sessions, weeksBack = 4) {
+  const { rows } = weeklySetsByCategory(sessions, weeksBack);
   if (!rows.length) return '';
 
   const maxScale = Math.max(24, ...rows.map(r => r.perWk));
   const rowHTML = rows.map(r => {
     const pct = Math.min(100, (r.perWk / maxScale) * 100);
-    const status = r.perWk < 10 ? 'low' : r.perWk > 20 ? 'high' : 'ok';
+    const status = r.status;
     return `
       <div class="mb-row">
         <span class="mb-cat">${esc(r.cat)}</span>

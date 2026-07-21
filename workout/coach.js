@@ -4,7 +4,7 @@
 import db from '../shared/db.js';
 import { CATEGORIES } from './exercises.js';
 import { buildRecords, computeStreak } from './achievements.js';
-import { lifetimeTotals, exerciseFrequency } from './stats.js';
+import { lifetimeTotals, exerciseFrequency, weeklySetsByCategory } from './stats.js';
 
 const MODEL = 'claude-sonnet-5';
 
@@ -144,6 +144,54 @@ export const EDIT_ROUTINE_TOOL = {
   },
 };
 
+// ── draft_split: a full multi-day programme the app saves as several routines ──
+export const DRAFT_SPLIT_TOOL = {
+  name: 'draft_split',
+  description: "Produce a complete multi-day training split (e.g. Push/Pull/Legs, Upper/Lower) when the user asks you to BUILD or CREATE a new programme or rebalance their training week. Return every day as its own routine; the app saves them all with one tap. Design the split to correct the imbalances shown in TRAINING BALANCE.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      splitName: { type: 'string', description: 'Overall programme name, e.g. "PPL — rebalanced" or "Upper/Lower".' },
+      days: {
+        type: 'array',
+        description: 'The training days, in order. Usually 3–6.',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Day/routine name, e.g. "Push A", "Legs".' },
+            exercises: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name:     { type: 'string', description: 'Exercise name from the ALLOWED EXERCISES list (fuzzy is fine).' },
+                  category: { type: 'string', enum: CATEGORIES },
+                  restTime: { type: 'integer', description: 'Rest between sets in seconds (60/90/120/180).' },
+                  sets: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        weight: { type: 'number',  description: 'Target kg. 0 for bodyweight/unknown.' },
+                        reps:   { type: 'integer', description: 'Target reps. For Cardio, reps = minutes.' },
+                        type:   { type: 'string', enum: ['normal', 'warmup', 'dropset'] },
+                      },
+                      required: ['weight', 'reps', 'type'],
+                    },
+                  },
+                },
+                required: ['name', 'category', 'restTime', 'sets'],
+              },
+            },
+          },
+          required: ['name', 'exercises'],
+        },
+      },
+    },
+    required: ['splitName', 'days'],
+  },
+};
+
 // ── Name normalisation (ported from cues.js — that copy is not exported) ──────
 export function normName(s) {
   return String(s).toLowerCase()
@@ -193,6 +241,18 @@ export function buildCoachContext(sessions, templates, records, streak, allExerc
     `- ${t.name}: ${t.exercises.map(e => e.name).join(', ')}`
   ).join('\n');
 
+  // Training-balance analysis: avg working sets/muscle group/week over the last
+  // 4 weeks (recent) and 8 weeks (baseline), flagged against the 10–20 set band.
+  const bal4 = weeklySetsByCategory(sessions, 4);
+  const bal8 = weeklySetsByCategory(sessions, 8);
+  const eightByCat = Object.fromEntries(bal8.rows.map(r => [r.cat, r.perWk]));
+  const balanceLines = bal4.rows.map(r => {
+    const flag = r.status === 'low' ? ' ⟵ under 10 (low)' : r.status === 'high' ? ' ⟵ over 20 (high)' : '';
+    const trend = eightByCat[r.cat] != null ? ` (8-wk avg ${eightByCat[r.cat].toFixed(1)})` : '';
+    return `- ${r.cat}: ${r.perWk.toFixed(1)} sets/wk${trend}${flag}`;
+  }).join('\n');
+  const cardioLine = bal4.cardioMinPerWk > 0 ? `\n- Cardio: ${bal4.cardioMinPerWk.toFixed(0)} min/wk` : '';
+
   const now = new Date();
   const todayStr = `${now.toISOString().slice(0, 10)} (${now.toLocaleDateString('en-GB', { weekday: 'long' })})`;
 
@@ -200,16 +260,22 @@ export function buildCoachContext(sessions, templates, records, streak, allExerc
 
 TODAY: ${todayStr}. Compute any relative dates ("last week", "yesterday") from this.
 
+VOICE — technical & precise, always explain the why
+- You are the ARC coach: an experienced strength coach with a sports-science bent. Confident, precise, never padded, never hype.
+- Back every recommendation with the mechanism, ratio, or number behind it — one clause is enough (e.g. "long head only loads at full stretch", "quads run 3:1 over hamstrings", "est. 1RM up 6%"). Precision IS the encouragement; don't cheerlead.
+- The user is an experienced lifter — skip the basics, surface the reasoning. Numbers over adjectives. British English, kilograms.
+- Be concise: a clear, justified recommendation, not an exhaustive survey. At most one meaningful emoji per reply (🏆/🔥), usually none.
+
 HOW TO RESPOND
 - Answer ANY question the user asks — training, technique/form, programming, progression, recovery, nutrition-for-lifters, or how to use this app. Always give a real answer in plain text; never refuse a normal training/health question or reply with just a routine when they asked something else.
-- Be concise and practical: a clear recommendation, not an exhaustive survey.
-- Use the user's own history below to personalise (their lifts, PBs, recent sessions, streak).
-- ONLY call draft_routine when the user actually wants a workout/program created, or asks "what should I train today". For everything else, reply with text and do not call it.
+- Ground everything in the user's own data below (their lifts, PBs, recent sessions, streak, and especially the TRAINING BALANCE analysis). When they ask "what am I doing too much / not enough", read straight off TRAINING BALANCE: name the specific groups above 20 sets/wk (too much) and below 10 (too little), and cite the numbers.
+- ONLY call draft_routine when the user wants a single workout/day created or asks "what should I train today". For a whole multi-day programme/split, call draft_split instead. For everything else, reply with text.
 
 ACTIONS YOU CAN TAKE (make real changes in the app)
 - add_library_exercises — add custom exercises to the user's library when they ask you to.
 - log_workouts — log/backfill completed sessions into their history, including on past dates (use TODAY to compute them).
-- suggest_routine_edit — when asked to analyse/improve/review their routines, propose ONE concrete change to a specific saved routine (a rationale + edit operations). The user gets a one-tap "Apply" button; don't rewrite the whole routine — target the highest-value tweak from their data (lagging muscle groups, stalled lifts, exercises they keep swapping out, over/under-volume).
+- suggest_routine_edit — when asked to analyse/improve/review an EXISTING saved routine, propose ONE concrete change to a specific routine (rationale + edit operations, one-tap Apply). Don't rewrite the whole routine — target the highest-value tweak from their data (lagging groups, stalled lifts, exercises they keep swapping, over/under-volume from TRAINING BALANCE).
+- draft_split — when the user asks you to BUILD/CREATE a new split or programme (multiple training days), or to rebalance their week. Return the full set of days; the app saves them all as routines with one tap. Design the split to fix the imbalances in TRAINING BALANCE — pull volume from over-worked groups toward under-worked ones, and say in your text reply which groups you rebalanced and why.
 Call these when the user clearly asks. Do it, then confirm briefly in text. Don't call them for purely hypothetical talk.
 
 APP CAPABILITIES (for "how do I…" questions)
@@ -225,6 +291,9 @@ ${allowed}
 
 THIS LIFTER
 Lifetime: ${lt.workouts} workouts, ${lt.hours.toFixed(0)}h trained, ${(lt.volume/1000).toFixed(1)} tonnes lifted. Current streak: ${streak.weeks} week(s) (${streak.thisWeekCount}/${streak.target} this week).
+
+TRAINING BALANCE (avg working sets/muscle group/week — target band 10–20; <10 = too little, >20 = too much)
+${balanceLines || '- (not enough recent history)'}${cardioLine}
 
 TOP EXERCISES (by frequency, with bests)
 ${topLines || '- (no history yet)'}
@@ -337,7 +406,7 @@ export async function callCoach({ apiMessages, system, forceTool = false, getKey
     model: MODEL,
     max_tokens: forceTool ? 1600 : 2000,   // more room for detailed chat answers
     system,
-    tools: [DRAFT_ROUTINE_TOOL, ADD_EXERCISES_TOOL, LOG_WORKOUTS_TOOL, EDIT_ROUTINE_TOOL],
+    tools: [DRAFT_ROUTINE_TOOL, ADD_EXERCISES_TOOL, LOG_WORKOUTS_TOOL, EDIT_ROUTINE_TOOL, DRAFT_SPLIT_TOOL],
     // forceTool may be a boolean (legacy → draft_routine) or a specific tool name.
     tool_choice: forceTool
       ? { type: 'tool', name: (typeof forceTool === 'string' && forceTool !== '1') ? forceTool : 'draft_routine' }

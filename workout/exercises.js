@@ -175,7 +175,7 @@ export const EXERCISES = [
   { name: 'Crunch',                          category: 'Core' },
   { name: 'Cable Crunch',                    category: 'Core' },
   { name: 'Crunch (Machine)',                category: 'Core' },
-  { name: 'Leg Raise (Hanging)',             category: 'Core', logType: 'weighted' },
+  { name: 'Leg Raise (Hanging)',             category: 'Core', logType: 'bodyweight' },
   { name: 'Leg Raise (Lying)',               category: 'Core' },
   { name: "Leg Raise (Captain's Chair)", category: 'Core' },
   { name: 'Russian Twist',                   category: 'Core' },

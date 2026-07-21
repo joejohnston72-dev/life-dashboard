@@ -63,12 +63,16 @@ function exLogType(name, category) {
 }
 const resolveLogType = ex => LOGTYPES[ex?.logType] ? ex.logType : exLogType(ex?.name, ex?.category);
 const fmtDuration = secs => { if (!secs) return ''; const m = Math.floor(secs/60), s = secs%60; return m + ':' + String(s).padStart(2,'0'); };
-function parseTime(str) {
+// Returns seconds. "m:ss" is always minutes:seconds. A bare number is minutes
+// for cardio (you did "25" → 25 min) but seconds for holds/planks ("45" → 45s).
+function parseTime(str, asMinutes = false) {
   if (str == null || str === '') return 0;
   str = String(str).trim();
   if (str.includes(':')) { const [m, s] = str.split(':'); return (parseInt(m)||0)*60 + (parseInt(s)||0); }
-  return parseInt(str) || 0;   // bare number = seconds
+  const n = parseFloat(str) || 0;
+  return Math.round(asMinutes ? n * 60 : n);
 }
+const isCardioEx = ex => ex?.category === 'Cardio' || resolveLogType(ex) === 'cardio';
 const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
 // Milestone emoji (from achievements.js) → Lucide icon names.
 const MILESTONE_ICONS = { '🏋️': 'dumbbell', '🔥': 'flame', '⚡': 'zap' };
@@ -165,7 +169,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.getElementById('sec' + activeTab).classList.add('active');
     document.getElementById('mainTitle').textContent =
-      activeTab === 'Dashboard' ? 'Gym App' : activeTab;
+      activeTab === 'Dashboard' ? 'ARC' : activeTab;
     document.getElementById('miniBar').classList.toggle('visible', !!activeSession);
     if (activeTab === 'Dashboard') { renderDashboard(); }
     if (activeTab === 'Library')   { renderLibrary();   }
@@ -401,8 +405,10 @@ function setInputCell(col, set, ex, ei, prev) {
     return `<td><input class="set-input" type="number" min="0" step="1" value="${set.reps || ''}" placeholder="${set.tR ?? 0}" inputmode="numeric" ${common} data-field="reps"></td>`;
   if (col === 'distance')
     return `<td><input class="set-input" type="number" min="0" step="0.01" value="${set.distance || ''}" placeholder="${prev?.distance ?? 0}" inputmode="decimal" ${common} data-field="distance"></td>`;
-  if (col === 'time')
-    return `<td><input class="set-input" type="text" value="${set.duration ? fmtDuration(set.duration) : ''}" placeholder="${prev?.duration ? fmtDuration(prev.duration) : 'm:ss'}" inputmode="numeric" ${common} data-field="time"></td>`;
+  if (col === 'time') {
+    const ph = prev?.duration ? fmtDuration(prev.duration) : (isCardioEx(ex) ? 'min' : 'm:ss');
+    return `<td><input class="set-input" type="text" value="${set.duration ? fmtDuration(set.duration) : ''}" placeholder="${ph}" inputmode="numeric" ${common} data-field="time"></td>`;
+  }
   return '<td></td>';
 }
 function buildSetRow(ex, ei, set) {
@@ -513,7 +519,7 @@ awBody.addEventListener('input', e => {
     if (!set) return;
     if (field === 'reps')          set.reps = parseInt(t.value) || 0;
     else if (field === 'distance') set.distance = parseFloat(t.value) || 0;
-    else if (field === 'time')     set.duration = parseTime(t.value);
+    else if (field === 'time')     set.duration = parseTime(t.value, isCardioEx(ex));
     else                           set[field] = parseFloat(t.value) || 0;   // weight
     (set.touched ||= {})[field] = true;
     if (field === 'weight') queueSanityCheck(ex, set, t.closest('.set-row'));
@@ -1273,6 +1279,9 @@ async function saveWorkout() {
   activeSession = null;
   document.getElementById('miniBar').classList.remove('visible');
   renderDashboard();
+  renderHistory();   // so a backfilled (past-dated) workout shows up immediately
+  renderStats();     // refresh the calendar + charts too
+  db.backup();       // mirror the new session up (self-healing background push)
 }
 
 function cancelWorkout() {
@@ -1435,6 +1444,23 @@ function resumeRestFromDb(saved) {
   }
 }
 
+// ── Auto cloud backup (throttled) ─────────────────────────────────────────────
+// Mirror local → cloud on app open and on resume, at most once per window. This
+// is cheap and safe: db.backup() is upsert-only (it never deletes), so it can't
+// wipe the cloud even if it somehow ran mid-restore — the throttle just avoids
+// needless network calls. ~6h means a couple of automatic backups a day plus one
+// every time you open the app after a gap, with no button to remember.
+const AUTO_BACKUP_MS = 6 * 60 * 60 * 1000;
+async function autoBackupIfStale() {
+  try {
+    const last = +(localStorage.getItem('arc-last-backup') || 0);
+    if (Date.now() - last < AUTO_BACKUP_MS) return;
+    await initialSync.catch(() => {});   // never race the initial restore
+    await db.backup();
+    localStorage.setItem('arc-last-backup', String(Date.now()));
+  } catch (_) { /* offline / no session — try again next open */ }
+}
+
 // ── Visibility: the app coming back from background ───────────────────────────
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
@@ -1449,6 +1475,7 @@ document.addEventListener('visibilitychange', () => {
     if (Date.now() >= restEndsAt) finishRest();
     else tickRest();
   }
+  autoBackupIfStale();   // resumed after a gap — mirror up if due
 });
 
 // expose to HTML
@@ -1890,29 +1917,43 @@ async function renderDashboard() {
   const templates = await getTemplates();
   const tmplEl = document.getElementById('templatesList');
   document.getElementById('routinesEmpty').style.display = templates.length ? 'none' : '';
+  document.getElementById('routinesHint').style.display = templates.length ? '' : 'none';
   tmplEl.innerHTML = templates.map(t => `
     <div class="template-card" data-tid="${t.id}">
       <div>
         <div class="tc-name">${esc(t.name)}</div>
         <div class="tc-ex">${t.exercises.map(e=>esc(e.name)).join(' · ')}</div>
       </div>
-      <button class="tc-del" data-del="${t.id}" aria-label="Delete routine" data-tip="Delete routine" title="Delete routine">${icon('x', { size: 15 })}</button>
     </div>
   `).join('');
+  const deleteTemplate = async id => {
+    const t = templates.find(x => x.id === id);
+    if (!confirm(`Delete routine "${t?.name || ''}"? This can't be undone.`)) return;
+    const ts = (await getTemplates()).filter(x => x.id !== id);
+    await db.set(STORE, 'templates', ts);
+    db.backup();
+    renderDashboard();
+  };
   tmplEl.querySelectorAll('.template-card').forEach(card => {
-    card.onclick = async e => {
-      if (e.target.closest('[data-del]')) return;
-      const t = templates.find(x => x.id === card.dataset.tid);
+    const tid = card.dataset.tid;
+    // Long-press guards deletion so routines can't be lost with a stray tap.
+    let holdTimer = null, held = false, sx = 0, sy = 0;
+    const cancelHold = () => { clearTimeout(holdTimer); holdTimer = null; card.classList.remove('tc-holding'); };
+    card.addEventListener('pointerdown', e => {
+      held = false; sx = e.clientX; sy = e.clientY;
+      card.classList.add('tc-holding');
+      holdTimer = setTimeout(() => { held = true; card.classList.remove('tc-holding'); deleteTemplate(tid); }, 550);
+    });
+    card.addEventListener('pointermove', e => {
+      if (holdTimer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancelHold();
+    });
+    card.addEventListener('pointerup', cancelHold);
+    card.addEventListener('pointercancel', cancelHold);
+    card.addEventListener('click', () => {
+      if (held) { held = false; return; } // long-press already handled it
+      const t = templates.find(x => x.id === tid);
       startEmptyWorkout(t);
-    };
-  });
-  tmplEl.querySelectorAll('[data-del]').forEach(btn => {
-    btn.onclick = async () => {
-      if (!confirm('Delete this routine?')) return;
-      const ts = (await getTemplates()).filter(t => t.id !== btn.dataset.del);
-      await db.set(STORE, 'templates', ts);
-      renderDashboard();
-    };
+    });
   });
 
   const sessions = await loadSessions();
@@ -2223,11 +2264,12 @@ async function saveHistoryEdits() {
   if (!hdSession) return;
   document.querySelectorAll('#hdBody .hd-edit-input').forEach(inp => {
     const ei = +inp.dataset.ei, si = +inp.dataset.si, field = inp.dataset.field;
-    const st = hdSession.exercises?.[ei]?.sets?.[si];
+    const ex = hdSession.exercises?.[ei];
+    const st = ex?.sets?.[si];
     if (!st) return;
     if (field === 'reps')          st.reps = parseInt(inp.value) || 0;
     else if (field === 'distance') st.distance = parseFloat(inp.value) || 0;
-    else if (field === 'time')     st.duration = parseTime(inp.value);
+    else if (field === 'time')     st.duration = parseTime(inp.value, isCardioEx(ex));
     else                           st.weight = parseFloat(inp.value) || 0;   // weight
   });
   // Any set that now carries data counts toward stats; fully-empty rows don't.
@@ -2699,6 +2741,7 @@ function renderCoachMessage(m) {
     wrap.appendChild(b);
   }
   if (m.routine) wrap.appendChild(renderRoutineCard(m.routine));
+  if (m.split)   wrap.appendChild(renderSplitCard(m.split));
   if (m.action)  wrap.appendChild(renderActionCard(m.action));
   if (m.suggestion) wrap.appendChild(renderSuggestionCard(m.suggestion));
   return wrap;
@@ -2856,6 +2899,42 @@ function renderRoutineCard(routine) {
   return card;
 }
 
+// A full multi-day split: each day previewed, saved as routines in one tap.
+function renderSplitCard(split) {
+  const card = document.createElement('div');
+  card.className = 'coach-routine coach-split';
+  const routines = split.routines || [];
+  card.innerHTML = `
+    <div class="coach-routine-name">${icon('layout-dashboard', { size: 15 })} ${esc(split.name)} · ${routines.length} days</div>
+    ${routines.map(r => `
+      <div class="coach-split-day">
+        <div class="coach-split-day-name">${esc(r.name)}</div>
+        <div class="coach-split-day-ex">${r.exercises.map(e => esc(e.name)).join(' · ')}</div>
+      </div>
+    `).join('')}
+    <div class="coach-routine-btns">
+      <button class="cr-save cs-save-all">${icon('plus', { size: 15 })} Save all ${routines.length} routines</button>
+    </div>`;
+  card.querySelector('.cs-save-all').onclick = async ev => {
+    const btn = ev.currentTarget; btn.disabled = true;
+    const templates = await getTemplates();
+    for (const r of routines) {
+      templates.push({
+        id: uid(), name: r.name,
+        exercises: r.exercises.map(e => ({
+          name: e.name, category: e.category, restTime: e.restTime ?? 60, logType: resolveLogType(e),
+          sets: e.sets.map(s => ({ weight: s.weight, reps: s.reps, distance: s.distance || 0, duration: s.duration || 0, type: s.type })),
+        })),
+      });
+    }
+    await db.set(STORE, 'templates', templates);
+    db.backup();
+    renderDashboard();
+    btn.textContent = `✓ Saved ${routines.length} routines`;
+  };
+  return card;
+}
+
 const COACH_ERRORS = {
   nokey:     'Add your Anthropic API key to use the coach — tap 🔑 below.',
   auth:      'That API key was rejected (401). Tap 🔑 to update it.',
@@ -2902,7 +2981,10 @@ async function sendCoach(text, forceTool = false) {
     });
     const apiMessages = coachThread.map(m =>
       m.role === 'assistant'
-        ? { role: 'assistant', content: m.text || (m.routine ? `[Drafted routine: ${m.routine.name}]` : '…') }
+        ? { role: 'assistant', content: m.text
+            || (m.routine ? `[Drafted routine: ${m.routine.name}]` : '')
+            || (m.split ? `[Drafted split: ${m.split.name} — ${(m.split.routines||[]).map(r=>r.name).join(', ')}]` : '')
+            || '…' }
         : { role: 'user', content: m.text }
     );
     const result = await callCoach({ apiMessages, system, forceTool, getKey: coachGetKey });
@@ -2930,8 +3012,24 @@ async function sendCoach(text, forceTool = false) {
     } else if (tool?.name === 'suggest_routine_edit') {
       botMsg.suggestion = tool.input;
       if (!botMsg.text) botMsg.text = tool.input?.rationale || 'Here’s a change I’d suggest:';
+    } else if (tool?.name === 'draft_split') {
+      try {
+        const days = Array.isArray(tool.input?.days) ? tool.input.days : [];
+        const routines = [];
+        for (const d of days) {
+          try { routines.push(await validateRoutine(d, { getAllExercises, guessCategory })); } catch (_) {}
+        }
+        if (routines.length) {
+          botMsg.split = { name: String(tool.input?.splitName || 'Training split').slice(0, 60), routines };
+          if (!botMsg.text) botMsg.text = `Here's a ${routines.length}-day split — “${botMsg.split.name}”:`;
+        } else if (!botMsg.text) {
+          botMsg.text = "I planned a split but couldn't structure it — try rephrasing.";
+        }
+      } catch (_) {
+        if (!botMsg.text) botMsg.text = "I planned a split but couldn't structure it — try rephrasing.";
+      }
     }
-    if (!botMsg.text && !botMsg.routine && !botMsg.action && !botMsg.suggestion) botMsg.text = '(no response)';
+    if (!botMsg.text && !botMsg.routine && !botMsg.split && !botMsg.action && !botMsg.suggestion) botMsg.text = '(no response)';
     coachThread.push(botMsg);
     thread.appendChild(renderCoachMessage(botMsg));
     persistCoachThread();
@@ -3002,3 +3100,5 @@ backfillCustomRepRanges(); // background — fills in AI rep ranges for any cust
 
 // If the cloud pull finished AFTER the cap (slow network), refresh once it lands.
 initialSync.then(n => { if (n) { renderDashboard(); renderHistory(); renderStats(); } }).catch(() => {});
+
+autoBackupIfStale();   // mirror local → cloud on open, throttled to ~6h

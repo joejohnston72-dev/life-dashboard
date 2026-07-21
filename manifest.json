@@ -6,8 +6,8 @@
   "scope": "/life-dashboard/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0b0b10",
-  "theme_color": "#0b0b10",
+  "background_color": "#0c0c0d",
+  "theme_color": "#0c0c0d",
   "icons": [
     {
       "src": "icon.png",

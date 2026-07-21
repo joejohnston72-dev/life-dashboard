@@ -7,22 +7,20 @@
 
 ---
 
-## 0. Decisions to confirm (change these and everything else follows)
+## 0. The three levers (locked)
 
-These three levers were chosen to fit the direction you've steered toward all
-along (near-black + electric sky-blue, "sleek/cool," premium-minimal,
-data-driven). If you want a different call on any, change it here and I'll
-propagate it through the doc and the app:
+These are decided and implemented. Change any of them here and it propagates
+through the doc and the app:
 
-| Lever | Chosen | Strong alternates |
+| Lever | Locked choice | Notes |
 |---|---|---|
-| **Name** | **ARC** | VOLT · FORGE · APEX · TEMPO |
-| **Accent** | **Electric Sky** `#38bdf8` (current) | Volt-lime · Molten · Violet |
-| **Coach voice** | **Direct & precise** | Encouraging-hype · Technical |
+| **Name** | **ARC** | Shipped: `<title>`, PWA install name, in-app header, manifests. |
+| **Look** | **Charcoal + electric blue, warm accents** | Neutral charcoal/grey surfaces (Apple-like), electric-blue `#38bdf8` primary, orange/red as the warm energy accents. |
+| **Coach voice** | **Technical & precise — explain the why** | Backs every call with the mechanism/number behind it. |
 
-Nothing in the app is renamed to "ARC" yet — that's a deliberate, separate step
-once the name is locked (tab title, PWA install name, in-app header, icon
-wordmark, manifests). Say the word and I'll do the rename in one pass.
+The name is live everywhere. The palette moved from the old blue-tinted
+near-black to **neutral charcoal** (iOS system-gray tones) so the accent, not
+the background, carries the colour.
 
 ---
 
@@ -65,19 +63,23 @@ attention.
 
 ## 3. Voice & tone (incl. the AI Coach)
 
-**Voice = direct & precise.** Short sentences. Say the useful thing, then stop.
-Explain the *why* in one clause, not a paragraph. Never hype for its own sake;
-let a real PB speak for itself.
+**Voice = technical & precise — always explain the why.** Short sentences. Say
+the useful thing, name the mechanism or number behind it, then stop. Never hype
+for its own sake; let a real PB speak for itself. The user is an experienced
+lifter — don't over-explain the basics, do surface the reasoning a good coach
+would.
 
 | Do | Don't |
 |---|---|
-| "Triceps are lagging — swap in overhead extensions." | "OMG your triceps need some LOVE 💪🔥 let's gooo!!!" |
-| "New best: 100 kg × 8." | "AMAZING WORK SUPERSTAR!!!" |
-| "Rest done — next set." | "Time to crush it champ!" |
-| "No workout in 6 days." | "We've missed you! Don't give up on yourself 🥺" |
+| "Triceps lag chest 3:1 by set volume — add overhead extensions; the long head only loads at full stretch." | "OMG your triceps need some LOVE 💪🔥 let's gooo!!!" |
+| "New best: 100 kg × 8 → est. 1RM ~127 kg, up 6% since May." | "AMAZING WORK SUPERSTAR!!!" |
+| "Quads at 22 sets/wk vs 9 for hamstrings — that imbalance raises knee-strain risk. Rebalance toward hinges." | "Time to crush it champ!" |
+| "No session in 6 days — strength holds ~10 days, so you've lost nothing yet." | "We've missed you! Don't give up 🥺" |
 
 **Rules of thumb**
 - Second person ("you"), present tense, active voice.
+- **Explain the why in one clause** — the mechanism, the ratio, the trade-off.
+  Precision *is* the encouragement.
 - Numbers over adjectives. "+12 kg since May," not "great progress."
 - At most **one** emoji per surface, and only where it carries meaning
   (🏆 PB, 🔥 streak). Prefer a Lucide icon to an emoji everywhere else.
@@ -85,10 +87,10 @@ let a real PB speak for itself.
 - Errors are calm and instructive: *"That API key was rejected (401). Tap the
   key to update it."* — never blame, never panic.
 
-**Coach persona:** an experienced strength coach who's seen your numbers and
-doesn't waste your time. Confident, a little blunt, always backs a suggestion
-with the reason. When it proposes a routine change, it's specific and
-actionable, never vague.
+**Coach persona:** an experienced strength coach with a sports-science bent —
+reads your numbers, spots the imbalance, and tells you the mechanism behind the
+fix. Confident and precise, never vague, never padded. Every routine change is
+specific, actionable, and justified by what's in your data.
 
 ---
 
@@ -119,29 +121,31 @@ it on a pure-white or busy background, or stretch/skew it.
 
 ## 5. Colour system
 
-Near-black canvas, **one** electric accent, a small set of semantic signals.
-Colour is used sparingly — the accent should feel earned. (These are the live
+**Charcoal canvas, one electric-blue primary, warm accents for energy.** Neutral
+charcoal/grey surfaces (iOS system-gray tones) give an Apple-like premium base
+with no colour cast — so the accent, not the background, is what you notice.
+Colour is used sparingly; the accent should feel earned. (These are the live
 `styles.css` / `workout` tokens.)
 
-### Surfaces (neutral, near-black)
+### Surfaces (neutral charcoal — no blue tint)
 | Token | Hex | Use |
 |---|---|---|
-| `--bg` | `#0b0b10` | App background / canvas |
-| `--surface` | `#15151c` | Cards, tiles, sheets, tab bar fill |
-| `--surface2` | `#1e1e26` | Inputs, chips, nested surfaces |
-| `--text` | `#f2f2f7` | Primary text |
-| `--text-muted` | `#8e8e9a` | Secondary text, labels, captions |
-| `--border` | `rgba(255,255,255,0.07)` | **Hairline** on every raised surface |
+| `--bg` | `#0c0c0d` | App background / canvas (near-black charcoal) |
+| `--surface` | `#1c1c1e` | Cards, tiles, sheets, tab bar fill (iOS systemGray6) |
+| `--surface2` | `#2c2c2e` | Inputs, chips, nested surfaces (iOS systemGray5) |
+| `--text` | `#f5f5f7` | Primary text |
+| `--text-muted` | `#98989f` | Secondary text, labels, captions |
+| `--border` | `rgba(255,255,255,0.10)` | **Hairline** on every raised surface |
 
-### Accent (the electric charge)
-| Token | Hex | Use |
-|---|---|---|
-| `--blue` (primary) | `#38bdf8` | Primary actions, active states, links, focus rings, the glow |
-| — gradient | `#2f9fe8 → #8ee3ff` | CTAs, logo, hero moments |
+### Accents
+| Token | Hex (rgb) | Role | Use |
+|---|---|---|---|
+| `--blue` | `#38bdf8` (`56,189,248`) | **Primary** | Primary actions, active states, links, focus rings, the glow |
+| `--orange` | `#fb923c` (`251,146,60`) | **Secondary / energy** | Hero "build/analyse" moments, streak warmth, one-off emphasis |
 
-**Rule:** exactly one primary accent. Everything interactive that's "the main
-thing" is electric-sky; everything else is neutral. If two blue things compete,
-one of them is wrong.
+**Rule:** exactly one *primary* accent (blue). Orange is the warm counterweight —
+used deliberately for energy/effort moments, never as a second default. If two
+blue things compete for "the main action," one is wrong.
 
 ### Semantic signals (used only for their meaning — never decoration)
 | Meaning | Token | Hex |
@@ -151,12 +155,17 @@ one of them is wrong.
 | Destructive / error / drop-set warn | `--red` | `#f43f5e` |
 | Superset / AI suggestion / drop-set | `--purple` | `#a78bfa` |
 
+Every accent now ships an `--x-rgb` triplet token (`--blue-rgb`, `--orange-rgb`,
+`--red-rgb`, …) so `rgba()` literals can reference `rgb(var(--red-rgb) / …)`
+instead of hard-coding digits. Prefer the token in new code.
+
 Category colours (muscle groups) live in `CATEGORY_COLORS` — those are data
 viz, kept distinct from brand colour.
 
-**When re-theming:** the accent appears as **hex *and* rgb triplets** in many
-`rgba()` literals (`56,189,248`). Sweep both. Update the two `manifest.json`
-`theme_color`/`background_color` and both `<meta name="theme-color">` too.
+**When re-theming:** accents still appear as raw rgb triplets in some older
+`rgba()` literals (`56,189,248`). Sweep both hex and triplet. Update both
+`manifest.json` `theme_color`/`background_color` and both
+`<meta name="theme-color">` too.
 
 ---
 
@@ -245,9 +254,11 @@ When shipping anything new, it's on-brand if:
 
 ---
 
-## 11. To implement the ARC name (when confirmed)
+## 11. The ARC name — shipped
 
-A single pass updates: `workout/index.html` `<title>` + `apple-mobile-web-app-title`
-+ in-app `#mainTitle` header; `workout/manifest.json` `name`/`short_name`; the
-icon wordmark; and any "Gym App" strings. The root hub is retired, so only the
-`workout/` app needs renaming. Ask and it's done.
+The rename is live. `workout/index.html` `<title>`, `apple-mobile-web-app-title`,
+and the in-app `#mainTitle` header all read **ARC**; `workout/manifest.json`
+`name`/`short_name` are **ARC**; the Dashboard tab title resolves to "ARC" in
+`app.js`. The root hub is retired, so only the `workout/` app was renamed. The
+icon wordmark still uses the dumbbell mark (see §4) — swap in an "ARC" wordmark
+lockup there whenever the icon art is next revised.
