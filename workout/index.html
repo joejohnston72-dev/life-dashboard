@@ -78,8 +78,14 @@
     .sheet-btn .lc { vertical-align:-0.2em; margin-right:2px; }
     .header-btn .lc, .back-btn .lc { pointer-events:none; }
 
-    .section { display:none; padding: 0 var(--gap) calc(env(safe-area-inset-bottom) + 72px); }
+    .section { display:none; padding: calc(env(safe-area-inset-top) + 8px) var(--gap) calc(env(safe-area-inset-bottom) + 72px); }
     .section.active { display:block; }
+    /* Thin status-bar scrim — now that the title header is gone, this keeps the
+       iOS clock/status strip legible as page content scrolls up under it. */
+    body::before {
+      content:''; position:fixed; top:0; left:0; right:0; height:env(safe-area-inset-top);
+      background:var(--bg); z-index:6; pointer-events:none;
+    }
 
     /* ── Dashboard ── */
     .start-btn {
@@ -510,10 +516,10 @@
     #secCoach.active {
       display:flex; flex-direction:column;
       position:fixed; left:0; right:0;
-      /* --hdr-h is measured from the real .page-header in JS (syncHeaderHeight)
-         so the coach sits flush below it on every device/font — the hardcoded
-         52px overlapped the header. Falls back to the old value pre-measure. */
-      top:var(--hdr-h, calc(env(safe-area-inset-top) + 52px));
+      /* Anchored straight to the safe area (no title header any more) and to the
+         tab bar — a deterministic full-height column, so the composer always sits
+         just above the tab bar and the thread fills the rest. */
+      top:calc(env(safe-area-inset-top) + 6px);
       bottom:calc(56px + env(safe-area-inset-bottom));      /* just above the tab bar */
     }
     .coach-thread { flex:1; overflow-y:auto; padding:12px var(--gap) 8px; display:flex; flex-direction:column; gap:10px; }
@@ -732,11 +738,10 @@
 <body>
 
 <!-- ── Main app ── -->
+<!-- No per-tab title bar: the bottom nav already names each tab, so the top
+     space is reclaimed for content. A thin scrim (body::before) keeps the
+     status-bar strip legible as content scrolls under it. -->
 <div id="mainApp">
-  <div class="page-header">
-    <button class="back-btn" id="homeBtn" data-tip="Back" title="Back"><i data-lucide="arrow-left" data-size="24"></i></button>
-    <h1 class="page-title" id="mainTitle">ARC</h1>
-  </div>
 
   <!-- Dashboard -->
   <div class="section active" id="secDashboard">

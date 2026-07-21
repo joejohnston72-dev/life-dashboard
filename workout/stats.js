@@ -28,10 +28,16 @@ export function monthlyViewHTML(sessions, year, monthIdx) {
   });
 
   let secs = 0, volume = 0, setCount = 0;
-  const trained = {}; // dayOfMonth -> volume
+  const trained = {};    // dayOfMonth -> volume (drives the heat shading)
+  const workedDay = {};  // dayOfMonth -> true if ANY set was logged (so bodyweight/
+                         // cardio-only days still light up, even at 0 kg volume)
   for (const s of inMonth) {
     secs += s.duration || 0;
     const day = dateOf(s).getDate();
+    // A session with any completed set, or any exercise at all, counts as trained.
+    const hasWork = (s.exercises || []).some(ex => (ex.sets || []).some(st => st.done))
+                 || (s.exercises || []).length > 0;
+    if (hasWork) workedDay[day] = true;
     for (const ex of s.exercises || []) {
       for (const st of ex.sets || []) {
         if (!st.done) continue;
@@ -58,9 +64,12 @@ export function monthlyViewHTML(sessions, year, monthIdx) {
   for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-empty"></div>`;
   for (let d = 1; d <= daysInMonth; d++) {
     const vol = trained[d] || 0;
-    const intensity = vol ? 0.35 + 0.65 * (vol / maxVol) : 0;
-    const cls = 'cal-cell cal-clickable' + (vol ? ' cal-trained' : '') + (d === todayDay ? ' cal-today' : '');
-    const style = vol ? `style="--i:${intensity.toFixed(2)}"` : '';
+    const worked = !!workedDay[d];
+    // Shade by volume where there is some; a worked-but-zero-volume day (all
+    // bodyweight/cardio) still gets a baseline fill so it reads as trained.
+    const intensity = worked ? (vol ? 0.35 + 0.65 * (vol / maxVol) : 0.35) : 0;
+    const cls = 'cal-cell cal-clickable' + (worked ? ' cal-trained' : '') + (d === todayDay ? ' cal-today' : '');
+    const style = worked ? `style="--i:${intensity.toFixed(2)}"` : '';
     const dateStr = `${year}-${pad(monthIdx + 1)}-${pad(d)}`;
     cells += `<div class="${cls}" data-date="${dateStr}" ${style}><span>${d}</span></div>`;
   }

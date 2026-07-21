@@ -168,8 +168,6 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.getElementById('sec' + activeTab).classList.add('active');
-    document.getElementById('mainTitle').textContent =
-      activeTab === 'Dashboard' ? 'ARC' : activeTab;
     document.getElementById('miniBar').classList.toggle('visible', !!activeSession);
     if (activeTab === 'Dashboard') { renderDashboard(); }
     if (activeTab === 'Library')   { renderLibrary();   }
@@ -2355,7 +2353,9 @@ document.getElementById('hdDelete').onclick = async () => {
   await db.delete(STORE, 'session-' + sid);
   document.getElementById('historyDetail').classList.remove('visible');
   renderHistory();
+  renderStats();     // clear the removed day from the calendar too
   renderDashboard();
+  db.backup();
 };
 
 // ── Build routines from history ───────────────────────────────────────────────
@@ -2667,7 +2667,10 @@ function parseCommaCSV(text) {
 // Keep the Coach tab flush below the real page header (its height varies with
 // font + safe-area, so a hardcoded offset overlapped it — see #secCoach CSS).
 function syncHeaderHeight() {
-  const el = document.querySelector('.page-header');
+  // The main tabs no longer have a title header (the coach anchors straight to
+  // the safe area), so this only measures a header if one exists. Kept as a safe
+  // no-op for the detail screens that still carry their own .page-header.
+  const el = document.querySelector('#mainApp > .page-header');
   if (!el) return;
   const h = Math.ceil(el.getBoundingClientRect().height);
   if (h) document.documentElement.style.setProperty('--hdr-h', h + 'px');
@@ -2875,6 +2878,9 @@ async function coachLogWorkouts(input) {
     saved.push(`${session.title} · ${fmtDate(date)}`);
   }
   renderDashboard();
+  renderHistory();   // reflect coach-backfilled sessions on the History list…
+  renderStats();     // …and on the calendar/stats immediately
+  if (saved.length) db.backup();
   return {
     text: saved.length ? `Done — logged ${saved.length} workout${saved.length === 1 ? '' : 's'} to your history.`
                        : `I couldn't log those — no exercises were provided.`,
